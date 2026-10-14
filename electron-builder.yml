@@ -1,0 +1,29 @@
+appId: personal.hongguo.manju
+productName: 红果漫剧桌面版
+electronDist: node_modules/electron/dist
+directories:
+  output: release
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: runtime-bundle
+    to: runtime-bundle
+asar: true
+afterPack: scripts/verify-packaged-runtime.cjs
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  signAndEditExecutable: false
+nsis:
+  # Embed SDK ELF files through NSIS File, avoiding unsupported ARM64 filters in Nsis7z.
+  preCompressedFileExtensions: ['.so']
+  differentialPackage: false
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+artifactName: Hongguo-Manju-${version}-Windows-x64.${ext}
