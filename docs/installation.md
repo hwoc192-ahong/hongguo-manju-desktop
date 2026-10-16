@@ -4,9 +4,11 @@
 
 ## 先确认下载状态
 
-目前公开仓库提供源码、截图和验证报告。0.2.1 Windows x64 安装包已经在本机生成、验证并上传至发布草稿，附有源码归档和 SHA-256 校验文件；由于其中的第三方签名 SDK 分发许可尚未确认，安装包尚未公开。
+0.2.1 Windows x64 测试版已提供安装包、源码归档和 SHA-256 校验文件。
 
-因此，普通访客现在看不到可下载的 `.exe`，无需反复寻找。下载 Source code ZIP 或 Code → Download ZIP 得到的是开发源码，不能双击安装。以下安装步骤适用于已经取得本机个人构建安装包的用户。
+**[直接下载 Windows x64 安装包](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.1/Hongguo-Manju-0.2.1-Windows-x64.exe)** · [发布页面与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1)
+
+普通用户选择 `.exe`，下载后双击安装即可。Source code ZIP 或 Code → Download ZIP 得到的是开发源码，不能双击安装。此版本为测试版，仍有 [已知限制](releases/v0.2.1.md#验证与已知限制)。
 
 ## 系统要求
 
@@ -25,12 +27,12 @@
 
 1. 打开 [本仓库](https://github.com/lhljpt-web/hongguo-manju-desktop)，核对地址中的账号为 `lhljpt-web`，仓库名为 `hongguo-manju-desktop`。
 2. 电脑宽屏页面通常在右侧显示 Releases；窗口较窄时位置可能变化，也可直接进入 [发布列表](https://github.com/lhljpt-web/hongguo-manju-desktop/releases)。
-3. 有公开版本后，打开对应版本，展开 Assets，查找类似 `Hongguo-Manju-0.2.1-Windows-x64.exe` 的安装附件。
+3. 打开 0.2.1 测试版，展开 Assets，选择 `Hongguo-Manju-0.2.1-Windows-x64.exe` 安装附件。
 4. `.exe` 是 Windows 安装程序；`SHA256SUMS.txt` 用于校验文件。Source code (zip) 和 Source code (tar.gz) 是 GitHub 自动提供的源码归档。
 
-当前尚未公开安装版本；发布草稿只对有仓库访问权限的维护者显示，不能作为面向普通用户的下载链接。
+此版本标记为 Pre-release（测试版）。如果没有显示在 Latest 入口，请直接进入 [0.2.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1)。
 
-## 安装个人构建
+## 安装程序
 
 1. 保存 `Hongguo-Manju-0.2.1-Windows-x64.exe`。文件约 173 MiB，下载或复制时需等待文件完整写入。
 2. 如果同时取得 `SHA256SUMS.txt`，可以按下一节核对文件摘要。
@@ -158,7 +160,7 @@ npm run package:win
 
 | 现象 | 说明与处理 |
 | --- | --- |
-| 右侧没有安装包，或 Releases 为空 | 当前安装包未公开。源码 ZIP 不能替代安装包，无需寻找不存在的下载附件。 |
+| 右侧没有找到安装包 | 直接进入 [0.2.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1)，展开 Assets 并选择 `.exe`；不要下载 Source code ZIP 作为安装包。 |
 | 下载了 ZIP，找不到可执行程序 | 这是源码归档。开发者可按上面的源码运行步骤操作，仍需准备完整运行组件。 |
 | 启动提示应用数据或运行组件无法读取 | 检查安装是否完整、应用数据目录是否可写；源码运行时还需检查 `runtime-bundle` 是否齐全。 |
 | 首页为空、搜索失败 | 检查网络并重试。同一网络能打开网页，不代表所有内容接口都可用；也可能是上游接口变化。 |

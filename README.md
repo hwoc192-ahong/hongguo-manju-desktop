@@ -2,11 +2,13 @@
 
 在 Windows 电脑上找漫剧、导入分享链接，并接着上次的进度观看。使用 Electron + React + TypeScript 开发，支持 Windows 10/11 x64。
 
+**[下载 Windows x64 安装包 · 0.2.1 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.1/Hongguo-Manju-0.2.1-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1) · [安装指南](docs/installation.md)
+
 > 本项目是个人维护的第三方非官方客户端，与红果官方及其运营方没有隶属、合作或授权关系。相关品牌、作品、封面及其他内容的权利归各自权利方所有。
 
 项目借鉴了渠道有数维护的 [hongguo-desktop（公开发行仓库）](https://github.com/waligoraamodio288-rgb/hongguo-desktop-releases) 的桌面端使用思路，并在研究其 TV 版请求结构后，实现了本项目的桥接与播放流程。感谢原项目提供的参考。本项目由本仓库作者独立维护，与原项目的发行、更新和反馈渠道分开。
 
-当前仓库公开源码、测试和验证报告，暂不提供安装包或完整运行组件。独立「红果免费漫剧」APP 接入仍处于验证阶段，具体能力和限制见下文。
+Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和验证报告。独立「红果免费漫剧」APP 接入仍处于验证阶段，具体能力和限制见下文。
 
 [界面预览](#界面预览) · [下载与安装指南](docs/installation.md) · [使用方法](#开始观看) · [常见问题](docs/installation.md#常见问题) · [发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases) · [问题反馈](https://github.com/lhljpt-web/hongguo-manju-desktop/issues)
 
@@ -44,13 +46,13 @@
 | 项目 | 当前状态 |
 | --- | --- |
 | 系统 | Windows 10 / 11 x64；暂无 macOS、Linux 或 Windows ARM64 安装包 |
-| 版本 | 0.2.1，本机测试构建 |
-| 安装包 | 已上传至发布草稿（仅维护者可见）；第三方 SDK 分发许可尚未确认，暂未公开下载 |
+| 版本 | 0.2.1，测试版（Pre-release） |
+| 安装包 | [Windows x64 · 约 173 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.1/Hongguo-Manju-0.2.1-Windows-x64.exe) |
 | 源码 | 可通过本页绿色 Code 按钮 → Download ZIP 下载 |
 | 运行依赖 | 源码包不含完整运行组件，仅下载 ZIP 无法直接观看 |
 | 手机与账号 | 完整个人构建无需手机或模拟器；不接入手机账号与跨设备同步 |
 
-普通用户可先查看 [下载与安装指南](docs/installation.md)。GitHub 右侧的 Releases 对应发布版本；只有公开发布并附上 `.exe` 的版本才有安装包可下载。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
+普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.2.1，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
 
 ## 功能
 
@@ -63,11 +65,11 @@
 
 ## 安装使用
 
-以下说明适用于已准备好运行组件的本机个人构建。GitHub 仓库目前没有可直接下载的安装包，下载源码 ZIP 后不能直接运行应用。
+从 [0.2.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1) 下载 `Hongguo-Manju-0.2.1-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
 
-本机安装包路径为 `release/Hongguo-Manju-0.2.1-Windows-x64.exe`，安装后启动「红果漫剧桌面版」。完整个人构建包含精简 Java、签名桥接和 FFmpeg，不需要另行安装 Node、Python、Java、手机 APP 或 Android 模拟器，也不需要手动启动服务。
+安装包包含精简 Java、签名桥接和 FFmpeg，不需要另行安装 Node、Python、Java、手机 APP 或 Android 模拟器，也不需要手动启动服务。
 
-已取得本机个人安装包的用户，可以双击 `.exe`，按向导选择安装目录，安装完成后从桌面或开始菜单启动应用。逐步操作、文件校验、升级和卸载说明见 [安装指南](docs/installation.md)。
+双击 `.exe`，按向导选择安装目录，安装完成后从桌面或开始菜单启动「红果漫剧桌面版」。逐步操作、文件校验、升级和卸载说明见 [安装指南](docs/installation.md)。
 
 0.2.1 使用米白背景、墨黑文字和朱红点缀，首页包含顶部导航、宽幅作品推荐和继续观看卡片。顶部可切换三个榜单或搜索剧名；推荐区下方圆点可切换作品，收藏按钮收藏当前作品。首页最多显示三部最近观看作品，点击后接着看。
 
@@ -97,7 +99,7 @@
 
 开发需要 Windows x64、Node.js 22+。完整个人构建的运行依赖位于安装目录的 `resources/runtime-bundle`；重建时需将已准备好的运行组件放入源码根目录的 `runtime-bundle`。组件清单和准备条件见 [运行组件说明](docs/runtime-components.md)。
 
-GitHub 仓库同样只包含源码、测试和经过整理的验证报告，不提供安装包、第三方 APK/SDK、Java/FFmpeg 运行依赖或媒体缓存。`npm ci` 后可以执行测试、类型检查和构建；实际启动播放需要自行准备上述本机运行组件。静态 APK 研究脚本还需要独立准备官方 APK 和 Python androguard 环境，原研究数据不随源码上传。
+Git 源码目录包含源码、文档、截图、测试和整理后的验证报告；安装包单独放在 Releases，源码 ZIP 不含完整运行组件或媒体缓存。`npm ci` 后可以执行测试、类型检查和构建；从源码启动播放需要准备上述运行组件。静态 APK 研究脚本还需要另行准备官方 APK 和 Python androguard 环境，原研究数据不随源码上传。
 
 下载源码后，先安装依赖并执行自动检查：
 
@@ -135,7 +137,7 @@ npm run package:win
 
 内容和播放可用性取决于上游接口及网络环境，接口变化可能导致搜索、榜单或播放失效。项目不承诺全部作品可用，也不承诺长期兼容。
 
-自有源码采用 GPL-3.0-only，见 [LICENSE](LICENSE)。第三方运行组件保留各自许可；项目许可证不授予任何作品、品牌或第三方 SDK 的使用与分发权。当前 Android 签名 SDK 的再分发许可尚未核实，因此本仓库只公开源码与报告，不公开分发包含该 SDK 的安装包，详见 [运行组件说明](docs/runtime-components.md)。
+自有源码采用 GPL-3.0-only，见 [LICENSE](LICENSE)。第三方运行组件保留各自许可；项目许可证不授予任何作品、品牌或第三方 SDK 的使用与分发权。当前 Android 签名 SDK 的再分发许可尚未核实，安装包发布不表示该事项已解决，详见 [运行组件说明](docs/runtime-components.md)。
 
 ## 问题反馈
 
