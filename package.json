@@ -1,6 +1,6 @@
 {
   "name": "hongguo-manju-desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-only",
@@ -17,6 +17,7 @@
     "start": "electron .",
     "runtime": "node scripts/prepare-runtime.mjs",
     "package:win": "npm run build && electron-builder --win --x64",
+    "release:verify": "node scripts/verify-update-release.mjs",
     "probe": "node scripts/probe.mjs",
     "probe:signed": "node scripts/signed-probe.mjs"
   },
@@ -33,6 +34,7 @@
     "vite": "^8.3.4"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }

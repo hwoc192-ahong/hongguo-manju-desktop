@@ -130,8 +130,20 @@ h1 { margin: 0; font-family: var(--display-font); font-size: 30px; line-height: 
 .load-more { display: flex; align-items: center; flex-direction: column; padding-top: 32px; gap: 10px; }
 .load-more p { color: var(--brand); font-size: 12px; margin: 0; }
 .page-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-top: 44px; padding: 24px 0; border-top: 1px solid var(--line); font-size: 11px; color: #90877c; }
-.update-button { color: var(--muted); font-size: 11px; padding: 0; }
-.update-button:hover { color: var(--brand); }
+.update-control { position: relative; flex-shrink: 0; }
+.update-launcher { padding: 8px 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.update-launcher:hover, .update-launcher.update-ready { color: var(--brand); }
+.update-ready i { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--brand); margin-left: 5px; vertical-align: top; }
+.update-panel { position: absolute; z-index: 80; top: 48px; right: 0; width: 340px; padding: 24px; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; box-shadow: 0 14px 50px #24211e26; }
+.update-heading { display: flex; justify-content: space-between; align-items: center; }
+.update-heading span { color: var(--brand); font-size: 9px; letter-spacing: 2px; }
+.update-heading h2 { margin: 6px 0 0; font: 600 22px var(--display-font); }
+.update-heading button { font-size: 26px; color: var(--muted); padding: 0 4px; }
+.update-panel p { font-size: 13px; line-height: 1.8; margin: 15px 0; overflow-wrap: anywhere; }
+.update-panel .update-version, .update-panel .update-transfer { font-size: 11px; color: var(--muted); }
+.update-panel progress { width: 100%; height: 7px; accent-color: var(--brand); }
+.update-actions { display: flex; align-items: center; gap: 15px; margin: 20px 0 15px; }
+.update-panel small { display: block; font-size: 10px; color: var(--muted); line-height: 1.8; }
 .detail-page { padding-top: 25px; padding-bottom: 40px; }
 .back-button { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; padding: 0 0 23px; }
 .back-button:hover { color: var(--brand); }

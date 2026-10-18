@@ -7,6 +7,15 @@ export interface Progress { seriesId: string; episodeId: string; order: number; 
 export interface Library { favorites: Work[]; history: Progress[] }
 export interface Playback { url: string; duration: number; definition: string; episodeId: string }
 export interface Result<T> { ok: boolean; data?: T; error?: { code: string; message: string } }
+export interface UpdateState {
+ status: 'idle'|'checking'|'current'|'available'|'downloading'|'downloaded'|'installing'|'error'|'unsupported';
+ currentVersion: string;
+ nextVersion?: string;
+ percent?: number;
+ transferred?: number;
+ total?: number;
+ message: string;
+}
 export interface DesktopApi {
  catalog(board: Board, offset?: number): Promise<Result<Catalog>>;
  search(query: string, offset?: number): Promise<Result<Catalog>>;
@@ -16,7 +25,11 @@ export interface DesktopApi {
  library(): Promise<Result<Library>>;
  favorite(work: Work, enabled: boolean): Promise<Result<Library>>;
  progress(progress: Omit<Progress,'updatedAt'>): Promise<Result<Library>>;
- checkUpdate(): Promise<Result<{ message: string }>>;
+ checkUpdate(): Promise<Result<UpdateState>>;
+ updateState(): Promise<Result<UpdateState>>;
+ downloadUpdate(): Promise<Result<UpdateState>>;
+ installUpdate(): Promise<Result<UpdateState>>;
+ onUpdate(listener: (state: UpdateState) => void): () => void;
 }
 export interface Resource { episodeId: string; duration: number; definition: string; codec: string; encrypted: boolean; spade?: string; url: string; size: number }
 export interface ApiTransport { request(path: string, body?: unknown, extra?: Record<string,string|number|boolean>): Promise<any> }

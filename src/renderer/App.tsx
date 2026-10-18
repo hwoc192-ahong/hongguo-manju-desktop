@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Board, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
 import { formatTime, resumeTime, selectEpisode } from './playback-state';
+import {UpdateControl} from './UpdateControl';
 
 type View = 'discover' | 'favorites' | 'history' | 'search';
 type IconName = 'home' | 'heart' | 'clock' | 'search' | 'plus' | 'play' | 'pause' | 'back' | 'refresh' | 'close' | 'next' | 'previous' | 'volume' | 'muted' | 'fullscreen' | 'check' | 'arrow' | 'film' | 'link';
@@ -187,6 +188,7 @@ export default function App() {
         <form className="search-box" onSubmit={submitSearch}><Icon name="search" size={18} /><input value={query} onChange={event => setQuery(event.target.value)} aria-label="搜索漫剧名称" placeholder="搜索漫剧" maxLength={200} /><button type="submit" aria-label="搜索" title="搜索"><Icon name="arrow" size={16} /></button></form>
         <button className="top-import" aria-label="导入分享" onClick={() => { setImportError(''); setImportOpen(true); }}><Icon name="link" size={17} /><span>导入链接</span></button>
         <nav className="library-nav" aria-label="个人记录"><button className={view === 'favorites' && !activeId ? 'active' : ''} aria-label="我的收藏" onClick={() => navigate('favorites')}>收藏</button><button className={view === 'history' && !activeId ? 'active' : ''} aria-label="观看历史" onClick={() => navigate('history')}>历史</button></nav>
+        <UpdateControl/>
       </header>
       <main className="content-scroll" ref={scrollArea}>
         {activeId ? <Detail key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : <div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
@@ -203,7 +205,7 @@ export default function App() {
             {list.length > 0 ? <>{view !== 'discover' && <div className="section-heading"><h2>{view === 'search' ? '搜索结果' : view === 'favorites' ? '已收藏的漫剧' : '最近观看'}</h2><span>{list.length}部漫剧</span></div>}<div className="work-grid">{list.map(work => <WorkCard key={work.id} work={work} progress={view === 'history' ? library.history.find(item => item.seriesId === work.id) : undefined} onOpen={() => setActiveId(work.id)} />)}</div></> : <EmptyState icon={view === 'favorites' ? 'heart' : view === 'history' ? 'clock' : 'search'} title={view === 'favorites' ? '收藏你的第一部漫剧' : view === 'history' ? '故事还没开始' : view === 'search' ? '没有找到相关漫剧' : '暂时没有推荐内容'} description={view === 'favorites' ? '在作品页面点击收藏，或导入一条分享内容。' : view === 'history' ? '看过的漫剧会出现在这里，随时接着看。' : view === 'search' ? '换一个剧名或关键词，再试试。' : '点击刷新，再来看看。'} action={view === 'favorites' || view === 'history' ? <button className="primary-button" onClick={() => navigate('discover')}>去发现<Icon name="arrow" size={16} /></button> : undefined} />}
             {(view === 'discover' || view === 'search') && catalog?.hasMore && <div className="load-more">{moreError && <p role="alert">{moreError}</p>}<button className="secondary-button" disabled={moreLoading} onClick={() => void loadCatalog(true)}>{moreLoading ? <><span className="spinner small" />正在加载…</> : moreError ? '重新加载' : '发现更多'}{!moreLoading && <Icon name="arrow" size={16} />}</button></div>}
           </>}
-          <footer className="page-footer"><span>好故事，值得慢慢看</span><button className="update-button" onClick={async () => { try { const result = await call(() => window.desktop.checkUpdate()); notify(result.message); } catch (error) { notify(errorMessage(error)); } }}>红果漫剧 · 检查更新</button></footer>
+          <footer className="page-footer"><span>好故事，值得慢慢看</span><span>自动检查更新 · 顶部「更新」查看</span></footer>
           </div>
         </div>}
       </main>
