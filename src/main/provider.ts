@@ -12,6 +12,7 @@ const BOARDS = {
 const SHARE_HOSTS = new Set(['kylin.hainanyuyue.com', 'hainanyuyue.com']);
 const WEB_ORIGIN = 'https://hongguoduanju.com';
 const QUALITY_ORDER = ['540p', '720p', '480p', '360p', '1080p'];
+const SUPPORTED_CODECS = new Set(['bytevc1', 'h264', 'h265', 'avc1', 'hvc1', 'hevc', 'h265_hvc1', 'av1']);
 
 export class ProviderError extends Error {
   readonly code: string;
@@ -281,11 +282,15 @@ export class ContentProvider {
     if (!record(model) || (!Array.isArray(model.video_list) && !record(model.video_list))) fail('INVALID_RESOURCE_MODEL', '播放资源模型无效。');
     // The verified native player model uses status=10 for success; this differs from API code=0.
     if (model.status != null && Number(model.status) !== 0 && Number(model.status) !== 10) fail('RESOURCE_UNAVAILABLE', '此分集的播放资源暂不可用。');
-    const tracks = Object.values(model.video_list).filter(record).sort((left, right) => {
+    const available = Object.values(model.video_list).filter(record);
+    if (!available.length) fail('RESOURCE_UNAVAILABLE', '此分集没有可播放的视频轨道。');
+    // Some episodes provide bytevc2 at every lower definition and HEVC only
+    // at 1080p. Choose a decodable track before applying quality preference.
+    const tracks = available.filter(track => SUPPORTED_CODECS.has(text(track.codec_type))).sort((left, right) => {
       const rank = (definition: unknown) => { const index = QUALITY_ORDER.indexOf(text(definition)); return index < 0 ? 99 : index; };
       return rank(left.definition) - rank(right.definition);
     });
-    if (!tracks.length) fail('RESOURCE_UNAVAILABLE', '此分集没有可播放的视频轨道。');
+    if (!tracks.length) fail('UNSUPPORTED_CODEC', '此分集没有当前播放器支持的视频编码。');
     const track = tracks[0];
     if (typeof track.encrypt !== 'boolean') fail('UNKNOWN_ENCRYPTION', '资源缺少明确的加密标记。');
     if (track.encrypt && track.encryption_method !== 'cenc-aes-ctr') fail('UNSUPPORTED_ENCRYPTION', '暂不支持此资源的加密格式。');

@@ -4,11 +4,11 @@
 
 ## 先确认下载状态
 
-0.2.1 Windows x64 测试版已提供安装包、源码归档和 SHA-256 校验文件。
+0.2.2 Windows x64 测试版已提供安装包、源码归档和 SHA-256 校验文件。
 
-**[直接下载 Windows x64 安装包](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.1/Hongguo-Manju-0.2.1-Windows-x64.exe)** · [发布页面与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1)
+**[直接下载 Windows x64 安装包](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.2/Hongguo-Manju-0.2.2-Windows-x64.exe)** · [发布页面与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.2)
 
-普通用户选择 `.exe`，下载后双击安装即可。Source code ZIP 或 Code → Download ZIP 得到的是开发源码，不能双击安装。此版本为测试版，仍有 [已知限制](releases/v0.2.1.md#验证与已知限制)。
+普通用户选择 `.exe`，下载后双击安装即可。Source code ZIP 或 Code → Download ZIP 得到的是开发源码，不能双击安装。此版本为测试版，仍有 [已知限制](releases/v0.2.2.md#验证与已知限制)。
 
 ## 系统要求
 
@@ -27,14 +27,14 @@
 
 1. 打开 [本仓库](https://github.com/lhljpt-web/hongguo-manju-desktop)，核对地址中的账号为 `lhljpt-web`，仓库名为 `hongguo-manju-desktop`。
 2. 电脑宽屏页面通常在右侧显示 Releases；窗口较窄时位置可能变化，也可直接进入 [发布列表](https://github.com/lhljpt-web/hongguo-manju-desktop/releases)。
-3. 打开 0.2.1 测试版，展开 Assets，选择 `Hongguo-Manju-0.2.1-Windows-x64.exe` 安装附件。
+3. 打开 0.2.2 测试版，展开 Assets，选择 `Hongguo-Manju-0.2.2-Windows-x64.exe` 安装附件。
 4. `.exe` 是 Windows 安装程序；`SHA256SUMS.txt` 用于校验文件。Source code (zip) 和 Source code (tar.gz) 是 GitHub 自动提供的源码归档。
 
-此版本标记为 Pre-release（测试版）。如果没有显示在 Latest 入口，请直接进入 [0.2.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1)。
+此版本标记为 Pre-release（测试版）。如果没有显示在 Latest 入口，请直接进入 [0.2.2 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.2)。
 
 ## 安装程序
 
-1. 保存 `Hongguo-Manju-0.2.1-Windows-x64.exe`。文件约 173 MiB，下载或复制时需等待文件完整写入。
+1. 保存 `Hongguo-Manju-0.2.2-Windows-x64.exe`。文件约 173 MiB，下载或复制时需等待文件完整写入。
 2. 如果同时取得 `SHA256SUMS.txt`，可以按下一节核对文件摘要。
 3. 双击 `.exe`，按安装向导选择安装目录，再执行安装。
 4. 完成后从桌面快捷方式或开始菜单启动「红果漫剧桌面版」。
@@ -47,16 +47,10 @@
 在安装文件所在文件夹打开 PowerShell，执行：
 
 ```powershell
-Get-FileHash -LiteralPath '.\Hongguo-Manju-0.2.1-Windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath '.\Hongguo-Manju-0.2.2-Windows-x64.exe' -Algorithm SHA256
 ```
 
-当前本机 0.2.1 安装包的 SHA-256 为：
-
-```text
-e0193adb6229adfda01b9c48f81cb6218cf644934e7ec69023a4f7d7600706f8
-```
-
-逐字符核对结果；十六进制字母大小写不影响比较。同版本如果重新构建，应以对应附件同时提供的校验文件为准。
+安装包摘要见对应发布页面的 `SHA256SUMS.txt`，对照同版本文件逐字符核对结果；十六进制字母大小写不影响比较。同版本如果重新构建，应以对应附件同时提供的校验文件为准。
 
 ## 首次打开后怎么用
 
@@ -97,7 +91,7 @@ e0193adb6229adfda01b9c48f81cb6218cf644934e7ec69023a4f7d7600706f8
 %APPDATA%\红果漫剧桌面版\
 ```
 
-`library.json` 保存收藏与观看位置，`media-cache` 保存媒体缓存。需要备份时，先关闭程序，再复制 `library.json`。清理空间时不要误删观看记录；缓存损坏可在程序关闭后仅清理 `media-cache`，下次播放会重新准备媒体。
+`library.json` 保存收藏与观看位置，`player-profile.json` 保存本次安装的固定播放标识，`media-cache` 保存媒体缓存。升级时保留播放标识，不通过删除或轮换标识处理内容服务错误。需要备份时，先关闭程序，再复制 `library.json`。清理空间时不要误删观看记录；缓存损坏可在程序关闭后仅清理 `media-cache`，下次播放会重新准备媒体。
 
 ## 从源码运行（适合开发者）
 
@@ -160,7 +154,7 @@ npm run package:win
 
 | 现象 | 说明与处理 |
 | --- | --- |
-| 右侧没有找到安装包 | 直接进入 [0.2.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.1)，展开 Assets 并选择 `.exe`；不要下载 Source code ZIP 作为安装包。 |
+| 右侧没有找到安装包 | 直接进入 [0.2.2 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.2)，展开 Assets 并选择 `.exe`；不要下载 Source code ZIP 作为安装包。 |
 | 下载了 ZIP，找不到可执行程序 | 这是源码归档。开发者可按上面的源码运行步骤操作，仍需准备完整运行组件。 |
 | 启动提示应用数据或运行组件无法读取 | 检查安装是否完整、应用数据目录是否可写；源码运行时还需检查 `runtime-bundle` 是否齐全。 |
 | 首页为空、搜索失败 | 检查网络并重试。同一网络能打开网页，不代表所有内容接口都可用；也可能是上游接口变化。 |

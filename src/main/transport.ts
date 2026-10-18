@@ -1,5 +1,5 @@
-import {mkdirSync} from 'node:fs';import {tmpdir} from 'node:os';import {safeJson} from './json';
-import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';import {createInterface} from 'node:readline';import {createHash} from 'node:crypto';import path from 'node:path';
+import {mkdirSync} from 'node:fs';import {mkdir,readFile,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {safeJson} from './json';
+import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';import {createInterface} from 'node:readline';import {createHash,randomInt} from 'node:crypto';import path from 'node:path';
 import type {ApiTransport} from '../shared/types';import {AppError} from './errors';
 type Reply={seq:number;headers?:Record<string,string>;error?:string};
 export class Signer {
@@ -21,13 +21,37 @@ export class Signer {
  close(){const child=this.process;this.process=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(new AppError('CANCELLED','内容服务已停止'))}this.pending.clear();child?.stdin.end();child?.kill()}
 }
 export class Transport implements ApiTransport {
- constructor(private signer:Signer){}
+ private playerIdentity?:Promise<{device_id:string;iid:string}>;
+ constructor(private signer:Signer,private profileDirectory=path.join(tmpdir(),'hongguo-runtime')){}
+ private identity(){
+  return this.playerIdentity??=(async()=>{
+   const file=path.join(this.profileDirectory,'player-profile.json');
+   try{
+    await mkdir(this.profileDirectory,{recursive:true});
+    let stored:string;
+    try{stored=await readFile(file,'utf8')}catch(error:any){
+     if(error.code!=='ENOENT')throw error;
+     const id=()=> '1'+Array.from({length:18},()=>randomInt(10)).join('');
+     const created={device_id:id(),iid:id()};
+     try{await writeFile(file,JSON.stringify(created),{flag:'wx',mode:0o600});return created}
+     catch(writeError:any){if(writeError.code!=='EEXIST')throw writeError;stored=await readFile(file,'utf8')}
+    }
+    const value=JSON.parse(stored);
+    if(!value||typeof value.device_id!=='string'||typeof value.iid!=='string'||! /^[1-9]\d{18}$/.test(value.device_id)||! /^[1-9]\d{18}$/.test(value.iid))throw Error('INVALID_PROFILE');
+    return {device_id:value.device_id,iid:value.iid};
+   }catch{throw new AppError('PLAYER_PROFILE','播放标识无法读取或保存，请检查应用数据目录是否可写')}
+  })();
+ }
  async request(endpoint:string,body?:unknown,extra:Record<string,string|number|boolean>={}){
   if(!/^\/(?:novel\/player\/|reading\/bookapi\/)/.test(endpoint))throw new AppError('INVALID_ENDPOINT','内容接口无效');
   const url=new URL(endpoint,'https://api5-normal-sinfonlinea.fqnovel.com');
   for(const [k,v] of Object.entries({aid:'8704',app_name:'novelread',version_code:'72232',version_name:'7.2.2.32',channel:'audit',device_platform:'android',os_version:'12',update_version_code:'72232',_rticket:Date.now(),...extra}))url.searchParams.set(k,String(v));
+  const playback=endpoint==='/novel/player/video_model/v1/';
+  // The current public player requires a stable installation identity. Legacy
+  // cross-app security headers make this endpoint return an empty HTTP 200.
+  if(playback)for(const [key,value] of Object.entries(await this.identity()))url.searchParams.set(key,value);
   const payload=body===undefined?undefined:JSON.stringify(body);const headers:Record<string,string>={'user-agent':'HongguoTV/0.1','content-type':'application/json; charset=utf-8',...(payload?{'x-ss-stub':createHash('md5').update(payload).digest('hex').toUpperCase()}: {})};
-  const signatures=await this.signer.sign(url.href,headers);let response:Response;
+  const signatures=playback?{}:await this.signer.sign(url.href,headers);let response:Response;
   try{response=await fetch(url,{method:payload?'POST':'GET',headers:{...headers,...signatures},body:payload,signal:AbortSignal.timeout(25000)})}catch{throw new AppError('NETWORK','无法连接内容来源，请检查网络后重试')}
   if(!response.ok)throw new AppError('API_HTTP',`内容来源暂不可用（${response.status}）`);
   const text=await response.text();if(!text.trim())throw new AppError('API_EMPTY','内容来源返回空结果，请稍后重试');if(text.length>8*1024*1024)throw new AppError('API_FORMAT','内容返回过大');

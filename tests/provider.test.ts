@@ -78,10 +78,28 @@ test('resources handle model/track variants, prefer 540p and keep credentials in
 });
 
 test('malformed or unsupported resource encryption fails without leaking credentials', async () => {
-  const track = { main_url: Buffer.from('https://v.example/video').toString('base64'), encrypt: true, encryption_method: 'unknown', spade_a: 'SECRET_KEY', size: 123, definition: '720p' };
+  const track = { main_url: Buffer.from('https://v.example/video').toString('base64'), codec_type: 'bytevc1', encrypt: true, encryption_method: 'unknown', spade_a: 'SECRET_KEY', size: 123, definition: '720p' };
   const provider = make(transport(() => ({ code: 0, data: { video_model: { video_duration: 60, video_list: [track] } } })));
   await assert.rejects(provider.getResource(VID), (error: any) => error.code === 'UNSUPPORTED_ENCRYPTION' && !error.message.includes('SECRET_KEY'));
   await assert.rejects(make(transport(() => ({ code: 0, data: { video_model: '{bad' } }))).getResource(VID), errorCode('INVALID_RESOURCE_MODEL'));
+});
+
+test('an unsupported low-resolution codec cannot hide a compatible full-length track',async()=>{
+  const base={main_url:'https://v.example/video',encrypt:false,size:9482722};
+  const tracks=[{...base,definition:'540p',codec_type:'bytevc2'},{...base,definition:'720p',codec_type:'bytevc2'},{...base,definition:'1080p',codec_type:'bytevc1'}];
+  for(const list of [tracks,Object.fromEntries(tracks.map((t,index)=>[index,t]))]){
+    const provider=make(transport(()=>({code:0,data:{video_model:{status:10,video_duration:60.303,video_list:list}}})));
+    const resource=await provider.getResource(VID);
+    assert.equal(resource.codec,'bytevc1');assert.equal(resource.definition,'1080p');assert.equal(resource.duration,60.303);
+  }
+});
+
+test('a resource with only unsupported codecs fails before download with an explicit error',async()=>{
+  for(const codec of ['bytevc2','future-codec']){
+    const track={main_url:'https://v.example/video?token=SECRET',codec_type:codec,encrypt:false,size:1234,definition:'540p'};
+    const provider=make(transport(()=>({code:0,data:{video_model:{video_duration:60,video_list:[track]}}})));
+    await assert.rejects(provider.getResource(VID),(error:any)=>error.code==='UNSUPPORTED_CODEC'&&!error.message.includes('SECRET'));
+  }
 });
 
 const page = (data: any) => `<script>window._ROUTER_DATA = ${JSON.stringify({ loaderData: data })};</script>`;
