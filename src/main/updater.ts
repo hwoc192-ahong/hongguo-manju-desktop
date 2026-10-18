@@ -18,7 +18,7 @@ export class UpdateService {
   engine.autoDownload=false;engine.autoInstallOnAppQuit=false;engine.allowPrerelease=true;engine.allowDowngrade=false;
   // This project publishes full installers (NSIS differentialPackage=false).
   engine.disableDifferentialDownload=true;
-  engine.on('update-available',info=>{this.set({status:'available',nextVersion:info.version,message:`发现新版本 ${info.version}，即将自动下载。`});queueMicrotask(()=>void this.download());});
+  engine.on('update-available',info=>{this.set({status:'available',nextVersion:info.version,message:`发现新版本 ${info.version}，点击“立即更新”开始下载；暂不更新可继续使用当前版本。`});});
   engine.on('update-not-available',()=>this.set({status:'current',nextVersion:undefined,message:'当前已是最新版本。'}));
   engine.on('download-progress',progress=>this.set({status:'downloading',percent:Math.max(0,Math.min(100,progress.percent)),transferred:progress.transferred,total:progress.total,message:'正在下载更新，你可以继续观看。'}));
   engine.on('update-downloaded',info=>this.set({status:'downloaded',nextVersion:info.version,percent:100,message:'更新已下载并校验，点击重启安装。收藏和观看记录会保留。'}));

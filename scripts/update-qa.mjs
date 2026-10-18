@@ -18,7 +18,8 @@ const output=path.resolve('outputs/update-qa');await mkdir(output,{recursive:tru
 const profile=path.join(output,'profile');
 let mode='unavailable';let app;const requests=[];const events=[];const errors=[];
 const manifest=await readFile('release/latest.yml');
-const filename=`Hongguo-Manju-${JSON.parse(await readFile('package.json','utf8')).version}-Windows-x64.exe`;
+const {version}=JSON.parse(await readFile('package.json','utf8'));
+const filename=`Hongguo-Manju-${version}-Windows-x64.exe`;
 const server=createServer((request,response)=>{
  const url=new URL(request.url,'http://localhost');requests.push({mode,path:url.pathname});
  if(url.pathname==='/latest.yml'){
@@ -48,6 +49,12 @@ try{
  await page.waitForFunction(async()=>{const r=await window.desktop.updateState();return r.data?.status==='error';},null,{timeout:30000});
  record({step:'real-network-failure',state:(await page.evaluate(()=>window.desktop.updateState())).data.status});
  mode='corrupt';await page.getByRole('button',{name:'重试更新',exact:true}).click();
+ await page.getByRole('button',{name:'立即更新',exact:true}).waitFor();
+ assert.equal(requests.filter(request=>request.path.endsWith('.exe')).length,0);
+ await page.getByRole('button',{name:'暂不更新',exact:true}).click();
+ await page.getByRole('button',{name:'应用更新',exact:true}).click();
+ assert.equal(requests.filter(request=>request.path.endsWith('.exe')).length,0);
+ await page.getByRole('button',{name:'立即更新',exact:true}).click();
  await page.waitForFunction(async()=>{const r=await window.desktop.updateState();return r.data?.status==='error'&&!!r.data?.nextVersion;},null,{timeout:90000});
  assert.match(mainLog,/checksum mismatch/i);record({step:'sha512-rejects-corrupt-installer',checksumMismatchLogged:true});
  mode='valid';await page.getByRole('button',{name:'重试更新',exact:true}).click();
@@ -66,21 +73,21 @@ try{
  // NSIS relaunch is outside Playwright; wait for installation then close only this QA executable.
  const deadline=Date.now()+90000;let installed=false;
  while(Date.now()<deadline){
-  try{installed=JSON.parse(extractFile(path.join(installDir,'resources/app.asar'),'package.json').toString()).version==='0.2.3';}catch{}
+  try{installed=JSON.parse(extractFile(path.join(installDir,'resources/app.asar'),'package.json').toString()).version===version;}catch{}
   if(installed)break;await new Promise(resolve=>setTimeout(resolve,1000));
  }
- assert.equal(installed,true,'NSIS must replace the installed application with 0.2.3');
+ assert.equal(installed,true,`NSIS must replace the installed application with ${version}`);
  const afterRestart=Date.now()+30000;let restarted=false;
  while(Date.now()<afterRestart){
   const processes=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-Command',"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ConvertTo-Json -Compress -InputObject @(Get-Process -Name '红果漫剧桌面版' -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq $env:QA_UPDATE_EXECUTABLE -and $_.MainWindowHandle -ne 0} | Select-Object Id,Path)"],{encoding:'utf8',windowsHide:true,env:{...env,QA_UPDATE_EXECUTABLE:executablePath}}));
   if(processes.length){restarted=true;break;}await new Promise(resolve=>setTimeout(resolve,1000));
  }
- assert.equal(restarted,true,'Installer must relaunch the QA client');record({step:'nsis-installed-and-relaunched',version:'0.2.3'});
+ assert.equal(restarted,true,'Installer must relaunch the QA client');record({step:'nsis-installed-and-relaunched',version});
  execFileSync('powershell.exe',['-NoProfile','-Command',"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-Process -Name '红果漫剧桌面版' -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq $env:QA_UPDATE_EXECUTABLE -and $_.MainWindowHandle -ne 0} | ForEach-Object { [void]$_.CloseMainWindow() }"],{windowsHide:true,env:{...env,QA_UPDATE_EXECUTABLE:executablePath}});
  await new Promise(resolve=>setTimeout(resolve,2500));
- app=await launch();page=await app.firstWindow();assert.equal(await app.evaluate(({app})=>app.getVersion()),'0.2.3');
+ app=await launch();page=await app.firstWindow();assert.equal(await app.evaluate(({app})=>app.getVersion()),version);
  const library=(await page.evaluate(()=>window.desktop.library())).data;assert.ok(library.favorites.some(w=>w.id===work.id));assert.equal(library.history.find(p=>p.seriesId===work.id).time,42);
- record({step:'installed-version-and-persistence',version:'0.2.3',favorites:library.favorites.length,time:42});
+ record({step:'installed-version-and-persistence',version,favorites:library.favorites.length,time:42});
  assert.deepEqual(errors,[]);
  await writeFile(path.join(output,'report.json'),JSON.stringify({passed:true,events,requests,errors},null,2));
 }catch(error){await writeFile(path.join(output,'report.json'),JSON.stringify({passed:false,failure:error.message,events,requests,errors},null,2));throw error;}

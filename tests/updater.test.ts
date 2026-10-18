@@ -11,13 +11,17 @@ class Engine extends EventEmitter {
   quitAndInstall(){this.installs++;}
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-test('check automatically downloads once, reports progress and waits for explicit install',async()=>{
+test('checks only notify; an explicit download request downloads once and installation waits for confirmation',async()=>{
   const engine=new Engine();let requests=0;const states:string[]=[];
   const service=new UpdateService(engine,'0.2.3',true,s=>states.push(s.status),()=>{requests++;});
   assert.equal(engine.autoDownload,false);assert.equal(engine.autoInstallOnAppQuit,false);
   assert.equal(engine.allowPrerelease,true);assert.equal(engine.allowDowngrade,false);
   await Promise.all([service.check(),service.check()]);await tick();
-  assert.equal(engine.checks,1);assert.equal(engine.downloads,1);
+  assert.equal(engine.checks,1);assert.equal(engine.downloads,0);
+  assert.equal(service.snapshot().status,'available');
+  await service.check();await tick();assert.equal(engine.downloads,0);
+  assert.equal(requests,0);assert.equal(engine.installs,0);
+  await Promise.all([service.download(),service.download()]);assert.equal(engine.downloads,1);
   assert.equal(service.snapshot().status,'downloading');assert.equal(service.snapshot().percent,46.2);
   assert.equal(requests,0);assert.equal(engine.installs,0);
   engine.emit('update-downloaded',{version:'0.2.4'});
@@ -29,7 +33,7 @@ test('check automatically downloads once, reports progress and waits for explici
 test('failed check and download expose retry without leaking internal errors',async()=>{
   const engine=new Engine();engine.failCheck=true;const service=new UpdateService(engine,'0.2.3',true,()=>{},()=>{});
   await service.check();assert.equal(service.snapshot().status,'error');assert.doesNotMatch(service.snapshot().message,/secret/);
-  engine.failCheck=false;engine.failDownload=true;await service.check();await tick();
+  engine.failCheck=false;engine.failDownload=true;await service.check();await service.download();
   assert.equal(service.snapshot().status,'error');assert.match(service.snapshot().message,/下载/);
   engine.failDownload=false;await service.download();assert.equal(engine.downloads,2);
   engine.emit('update-downloaded',{version:'0.2.4'});assert.equal(service.snapshot().status,'downloaded');
@@ -55,6 +59,6 @@ test('an installer launch failure is reported rather than thrown after shutdown'
 test('download errors become retryable only after the pending download has settled',async()=>{
  const engine=new Engine();let finish!:()=>void;
  engine.downloadUpdate=async()=>{engine.emit('error',new Error('checksum mismatch'));await new Promise<void>(resolve=>{finish=resolve;});throw new Error('checksum mismatch');};
- const service=new UpdateService(engine,'0.2.3',true,()=>{},()=>{});await service.check();await tick();
+ const service=new UpdateService(engine,'0.2.3',true,()=>{},()=>{});await service.check();void service.download();await tick();
  assert.equal(service.snapshot().status,'downloading');finish();await tick();assert.equal(service.snapshot().status,'error');
 });
