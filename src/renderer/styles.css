@@ -185,11 +185,18 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; -webkit-appearance
 .volume-controls input::-webkit-slider-thumb { width: 7px; height: 7px; }
 .speed-select { appearance: none; padding: 5px 3px; border: 0; color: #64584e; background: var(--panel); font-size: 11px; cursor: pointer; max-width: 74px; }
 .speed-select option { background: var(--panel); }
-.player:fullscreen { border: 0; border-radius: 0; display: flex; flex-direction: column; }
-.player:fullscreen .video-stage { flex: 1; height: auto; min-height: 0; }
-.player:fullscreen .player-controls { padding: 0 24px 7px; }
-.player:fullscreen .control-row { height: 54px; gap: 17px; }
-.player:fullscreen .volume-controls input { width: 80px; }
+.player-surface:fullscreen { background: #000; width: 100%; height: 100%; }
+.player-surface:fullscreen .player { width: 100%; height: 100%; border: 0; border-radius: 0; }
+.player-surface:fullscreen .video-stage { height: 100%; min-height: 0; background: #000; }
+.player-surface:fullscreen .player-controls { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; padding: 36px 24px 12px; color: #fff; background: linear-gradient(transparent, #000c); opacity: 1; transition: opacity .2s; }
+.player-surface:fullscreen .control-row { height: 54px; gap: 17px; }
+.player-surface:fullscreen .control-button, .player-surface:fullscreen .time-label, .player-surface:fullscreen .definition-label, .player-surface:fullscreen .speed-select { color: #fff; }
+.player-surface:fullscreen .speed-select { background: transparent; }
+.player-surface:fullscreen .speed-select option { background: #24211e; color: #fff; }
+.player-surface:fullscreen .volume-controls input { width: 80px; }
+.player-surface:fullscreen input[type="range"] { background: linear-gradient(to right, var(--brand) var(--range-progress), #ffffff65 var(--range-progress)); }
+.player-surface:fullscreen.controls-hidden, .player-surface:fullscreen.controls-hidden video { cursor: none; }
+.player-surface:fullscreen.controls-hidden .player-controls { opacity: 0; pointer-events: none; }
 .unavailable-player { min-height: 350px; background: #e9e1d5; border-radius: 8px; color: #7d6b5a; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px; text-align: center; padding: 25px; }
 .unavailable-player h3 { font-size: 14px; font-weight: 400; margin: 0; }
 .now-playing { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 18px 0 23px; border-bottom: 1px solid var(--line); }

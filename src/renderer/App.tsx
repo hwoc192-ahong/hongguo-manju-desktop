@@ -3,6 +3,7 @@ import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Board, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
 import { formatTime, resumeTime, selectEpisode } from './playback-state';
 import {UpdateControl} from './UpdateControl';
+import {PlayerSurface} from './PlayerSurface';
 
 type View = 'discover' | 'favorites' | 'history' | 'search';
 type IconName = 'home' | 'heart' | 'clock' | 'search' | 'plus' | 'play' | 'pause' | 'back' | 'refresh' | 'close' | 'next' | 'previous' | 'volume' | 'muted' | 'fullscreen' | 'check' | 'arrow' | 'film' | 'link';
@@ -241,7 +242,7 @@ function Detail({ id, library, onLibrary, onFavorite, favoriteBusy, onBack, noti
     {loading ? <div className="center-loading"><span className="spinner" /><p>正在打开这个故事…</p></div> : error ? <ErrorState message={error} onRetry={() => setReload(value => value + 1)} /> : series && <>
       <div className="detail-heading"><div><span className="eyebrow">NOW SHOWING</span><h1>{series.title}</h1><p>{series.categories?.join(' · ')}{series.categories?.length ? ' · ' : ''}{series.total ? `全${series.total}集` : `${series.episodes.length}集`}</p></div><button className={`favorite-button ${favorite ? 'is-favorite' : ''}`} disabled={favoriteBusy} onClick={() => onFavorite(series)}><Icon name="heart" size={18} />{favorite ? '已收藏' : '收藏漫剧'}</button></div>
       <div className="watch-layout"><section className="watch-main">
-        {episode ? <Player key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
+        {episode ? <PlayerSurface episodeId={episode.id}><Player key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /></PlayerSurface> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
         <div className="now-playing"><div><span className="playing-dot" /><strong>{episode ? `第${episode.order}集` : '剧集待更新'}</strong><span>{episode?.title && episode.title !== `第${episode.order}集` ? episode.title : series.title}</span></div><label className="toggle-label"><input type="checkbox" checked={autoNext} onChange={event => setAutoNext(event.target.checked)} /><span className="toggle-track" />自动连播</label></div>
         <section className="story-info"><Cover work={series} /><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category => <span key={category}>{category}</span>)}</div><p>{series.description || '暂无作品简介。'}</p></div></section>
       </section><aside className="episode-panel"><div className="episode-heading"><div><h2>选集</h2><span>{series.episodes.length}集可播放</span></div><button onClick={() => setSortDescending(value => !value)}>{sortDescending ? '倒序 ↓' : '正序 ↑'}</button></div><div className="episode-grid">{episodes.map(item => <button key={item.id} className={item.id === episode?.id ? 'current' : ''} onClick={() => setEpisode(item)} title={item.title || `第${item.order}集`} aria-label={`播放第${item.order}集`} aria-current={item.id === episode?.id ? 'true' : undefined}>{item.id === episode?.id && <span className="equalizer"><i /><i /><i /></span>}{item.order}</button>)}</div></aside></div>
@@ -320,7 +321,7 @@ function Player({ series, episode, initialTime, onLibrary, onPrevious, onNext, a
   function move(action?: () => void) { captureProgress(); void save(); action?.(); }
   function toggleFullscreen() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => notify('暂时无法退出全屏。'));
-    else void container.current?.requestFullscreen().catch(() => notify('暂时无法进入全屏。'));
+    else void container.current?.closest('.player-surface')?.requestFullscreen().catch(() => notify('暂时无法进入全屏。'));
   }
   function keyboard(event: KeyboardEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).matches('input, select, button')) return;
