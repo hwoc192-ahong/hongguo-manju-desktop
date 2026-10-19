@@ -235,6 +235,11 @@ function Detail({ id, library, onLibrary, onFavorite, favoriteBusy, onBack, noti
   }, [id, reload]);
   useEffect(() => { document.querySelector('.content-scroll')?.scrollTo({ top: 0 }); }, []);
   const index = series?.episodes.findIndex(item => item.id === episode?.id) ?? -1;
+  useEffect(() => {
+    if (!series || index < 0) return;
+    void call(() => window.desktop.bufferEpisodes(series.episodes.slice(index, index + 5).map(item => item.id))).catch(() => {});
+  }, [series, index]);
+  useEffect(() => () => { void call(() => window.desktop.bufferEpisodes([])).catch(() => {}); }, []);
   const favorite = library.favorites.some(item => item.id === id);
   const episodes = sortDescending ? [...(series?.episodes || [])].reverse() : series?.episodes || [];
   const next = () => { if (series && index >= 0 && index < series.episodes.length - 1) setEpisode(series.episodes[index + 1]); };

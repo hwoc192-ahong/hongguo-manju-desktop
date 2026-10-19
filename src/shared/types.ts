@@ -22,6 +22,7 @@ export interface DesktopApi {
  importShare(text: string): Promise<Result<Series>>;
  series(id: string): Promise<Result<Series>>;
  playback(id: string, force?: boolean): Promise<Result<Playback>>;
+  bufferEpisodes(ids: string[]): Promise<Result<void>>;
  library(): Promise<Result<Library>>;
  favorite(work: Work, enabled: boolean): Promise<Result<Library>>;
  progress(progress: Omit<Progress,'updatedAt'>): Promise<Result<Library>>;

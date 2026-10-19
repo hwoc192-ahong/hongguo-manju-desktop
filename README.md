@@ -2,7 +2,7 @@
 
 在 Windows 电脑上找漫剧、导入分享链接，并接着上次的进度观看。使用 Electron + React + TypeScript 开发，支持 Windows 10/11 x64。
 
-**[下载 Windows x64 安装包 · 0.2.5 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.5/Hongguo-Manju-0.2.5-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.5) · [安装指南](docs/installation.md)
+**[下载 Windows x64 安装包 · 0.2.6 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.6/Hongguo-Manju-0.2.6-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.6) · [安装指南](docs/installation.md)
 
 > 本项目是个人维护的第三方非官方客户端，与红果官方及其运营方没有隶属、合作或授权关系。相关品牌、作品、封面及其他内容的权利归各自权利方所有。
 
@@ -46,19 +46,20 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 | 项目 | 当前状态 |
 | --- | --- |
 | 系统 | Windows 10 / 11 x64；暂无 macOS、Linux 或 Windows ARM64 安装包 |
-| 版本 | 0.2.5，测试版（Pre-release） |
-| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.5/Hongguo-Manju-0.2.5-Windows-x64.exe) |
+| 版本 | 0.2.6，测试版（Pre-release） |
+| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.6/Hongguo-Manju-0.2.6-Windows-x64.exe) |
 | 源码 | 可通过本页绿色 Code 按钮 → Download ZIP 下载 |
 | 运行依赖 | 源码包不含完整运行组件，仅下载 ZIP 无法直接观看 |
 | 手机与账号 | 完整个人构建无需手机或模拟器；不接入手机账号与跨设备同步 |
 
-普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.2.5，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
+普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.2.6，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
 
 ## 功能
 
 - 浏览来源提供的推荐榜、热播榜和新剧榜，按剧名搜索作品。
 - 导入分享链接，查看作品详情和剧集列表，并加入本地收藏。
 - 播放、选集、进度拖动、音量、倍速、全屏、上下集和自动连播。
+- 当前集优先准备，再后台逐集缓冲后四集；进入下一集后自动补足五集窗口，减少反复等待。
 - 保存本机收藏、最近观看和播放进度，退出重开后继续观看。
 - 启动后自动检查并提示新版；点击“立即更新”才下载，下载完成后点击“重启安装”升级。
 
@@ -66,19 +67,19 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 
 ## 安装使用
 
-从 [0.2.5 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.5) 下载 `Hongguo-Manju-0.2.5-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
+从 [0.2.6 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.6) 下载 `Hongguo-Manju-0.2.6-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
 
 安装包包含精简 Java、签名桥接和 FFmpeg，不需要另行安装 Node、Python、Java、手机 APP 或 Android 模拟器，也不需要手动启动服务。
 
 双击 `.exe`，按向导选择安装目录，安装完成后从桌面或开始菜单启动「红果漫剧桌面版」。逐步操作、文件校验、升级和卸载说明见 [安装指南](docs/installation.md)。
 
-0.2.5 使用米白背景、墨黑文字和朱红点缀，首页包含顶部导航、宽幅作品推荐和继续观看卡片。顶部可切换三个榜单或搜索剧名；推荐区下方圆点可切换作品，收藏按钮收藏当前作品。首页最多显示三部最近观看作品，点击后接着看。
+0.2.6 使用米白背景、墨黑文字和朱红点缀，首页包含顶部导航、宽幅作品推荐和继续观看卡片。顶部可切换三个榜单或搜索剧名；推荐区下方圆点可切换作品，收藏按钮收藏当前作品。首页最多显示三部最近观看作品，点击后接着看。
 
 点击「导入链接」粘贴链接或包含链接的分享文字，导入后自动收藏。播放器支持进度、音量、倍速、全屏和上下集；全屏播放时控制栏闲置约 2.5 秒自动隐藏，移动鼠标后显示，暂停时保持显示。手动上下集与自动连播会保持全屏；视频按原比例显示。首版先完整准备单集再起播，首次加载比流媒体播放器慢一些。
 
 记录与缓存位于 `%APPDATA%/红果漫剧桌面版/`，其中 `library.json` 保存收藏和观看位置，`player-profile.json` 保存本次安装的固定播放标识。卸载默认保留个人记录。完整损坏的记录文件会先备份为 `library.json.corrupt-*`；单条坏记录会过滤，其余记录保留。
 
-应用从本仓库 GitHub Releases 获取更新（含测试版）。启动后自动检查，运行期间每 4 小时检查；发现新版后提示，点击「立即更新」才下载并校验；选择「暂不更新」可继续使用当前版本。点击顶部「更新」可查看状态、重试或「重启安装」。普通退出不安装更新。0.2.2 及更早版本需先手动安装一次 0.2.5；0.2.3 仍采用旧的自动下载行为，要避免后台下载可直接手动覆盖安装本版。升级保留收藏、进度和播放标识，详见 [更新说明](docs/auto-update.md)。安装包尚未配置 Windows 发布者代码签名。
+应用从本仓库 GitHub Releases 获取更新（含测试版）。启动后自动检查，运行期间每 4 小时检查；发现新版后提示，点击「立即更新」才下载并校验；选择「暂不更新」可继续使用当前版本。点击顶部「更新」可查看状态、重试或「重启安装」。普通退出不安装更新。0.2.2 及更早版本需先手动安装一次 0.2.6；0.2.3 仍采用旧的自动下载行为，要避免后台下载可直接手动覆盖安装本版。升级保留收藏、进度和播放标识，详见 [更新说明](docs/auto-update.md)。安装包尚未配置 Windows 发布者代码签名。
 
 ## 开始观看
 
