@@ -32,7 +32,7 @@ try{
  app=await launch();page=await app.firstWindow();page.on('pageerror',e=>report.errors.push(e.name));
  await page.getByRole('button',{name:/我的收藏/}).click();await page.waitForSelector('.work-card',{timeout:60000});
  const state=await page.evaluate(()=>window.desktop.library());assert.equal(state.ok,true);const history=state.data.history.find(p=>p.seriesId==='7695370827507698713');assert.ok(history.time>=12&&history.time<15);
- await page.locator('.work-card').filter({hasText:'到末世十年后竟然遇到四个尸王第一季'}).click();const resumed=await playing(1);assert.ok(resumed.time>=12&&resumed.time<17);record({step:'installed-close-reopen-resume',saved:history.time,resumed:resumed.time});
+ await page.locator('.work-card').filter({hasText:history.work.title}).click();const resumed=await playing(1);assert.ok(resumed.time>=12&&resumed.time<17);record({step:'installed-close-reopen-resume',saved:history.time,resumed:resumed.time});
  await page.getByRole('button',{name:'下一集',exact:true}).click();record({step:'installed-next-episode',...await playing(2)});
  await app.close();app=null;
  const normalEnv={...env};delete normalEnv.HONGGUO_TEST_DATA;

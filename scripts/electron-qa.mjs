@@ -7,6 +7,7 @@ const profile=path.resolve(process.env.QA_PROFILE||`outputs/electron-qa-${Date.n
 const executablePath=process.env.QA_EXECUTABLE;
 const report={generatedAt:new Date().toISOString(),packaged:!!executablePath,events:[],errors:[],passed:false};
 let instance;let page;
+const targetId='7695370827507698713';let targetTitle;
 const launch=async()=>electron.launch({...(executablePath?{executablePath,args:[]}:{args:['.']}),env:{...process.env,HONGGUO_TEST_DATA:profile}});
 async function screenshot(page,file){for(let i=0;i<3;i++){try{await page.bringToFront();await page.evaluate(async()=>{const visible=[...document.images].filter(i=>i.getBoundingClientRect().top<innerHeight);await Promise.race([Promise.allSettled(visible.map(i=>i.decode())),new Promise(r=>setTimeout(r,10000))]);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});await page.screenshot({path:file});return}catch(e){if(i===2)throw e;await page.waitForTimeout(500)}}}
 const event=value=>{report.events.push(value);console.log(JSON.stringify(value))};
@@ -33,9 +34,10 @@ try{
  await page.waitForSelector('.detail-heading h1',{timeout:60000});assert.equal(await page.locator('.detail-heading h1').innerText(),recommended);
  event({step:'recommendation-opens-correct-series',title:recommended,...await ready(page,1)});
  await page.getByRole('button',{name:'返回',exact:true}).click();
+ const target=await page.evaluate(id=>window.desktop.series(id),targetId);assert.equal(target.ok,true);assert.equal(target.data.id,targetId);targetTitle=target.data.title;
  await page.getByRole('textbox',{name:'搜索漫剧名称'}).fill('到末世十年后竟然遇到四个尸王');
  await page.getByRole('button',{name:'搜索',exact:true}).click();await page.waitForSelector('.work-card',{timeout:60000});
- assert.match(await page.locator('.work-grid').innerText(),/到末世十年后竟然遇到四个尸王/);event({step:'search-ui',matched:true});
+ const search=await page.evaluate(()=>window.desktop.search('到末世十年后竟然遇到四个尸王'));assert.equal(search.ok,true);assert.ok(search.data.items.some(work=>work.id===targetId));await page.locator('.work-grid .work-card h3').filter({hasText:targetTitle}).waitFor();event({step:'search-ui',matched:true,id:targetId,title:targetTitle});
  await importTarget(page);
  const ended=[];await page.exposeFunction('qaEnded',v=>ended.push(v));
  await page.evaluate(()=>{document.addEventListener('ended',e=>{if(e.target instanceof HTMLVideoElement)window.qaEnded({duration:e.target.duration,time:e.target.currentTime,frames:e.target.webkitDecodedFrameCount,audioBytes:e.target.webkitAudioDecodedByteCount})},true)});
@@ -66,7 +68,7 @@ try{
  instance=await launch();page=await instance.firstWindow();page.on('pageerror',e=>report.errors.push(e.name));
  await page.getByRole('button',{name:/我的收藏/}).click();await page.waitForSelector('.work-card',{timeout:60000});
  const saved=await page.evaluate(()=>window.desktop.library());assert.ok(saved.ok);const history=saved.data.history.find(p=>p.seriesId==='7695370827507698713');assert.equal(history.order,1);assert.ok(history.time>=12&&history.time<15);
- await page.locator('.work-card').filter({hasText:'到末世十年后竟然遇到四个尸王第一季'}).click();await ready(page,1);
+ await page.locator('.work-card').filter({hasText:targetTitle}).click();await ready(page,1);
  const resumed=await page.locator('video').evaluate(v=>v.currentTime);assert.ok(resumed>=12&&resumed<17);event({step:'close-reopen-favorite-resume',saved:history.time,resumed});
  await page.getByRole('button',{name:'返回',exact:true}).click();await page.getByRole('button',{name:'发现',exact:true}).click();await page.waitForSelector('.work-card',{timeout:60000});
  await instance.evaluate(()=>{globalThis.qaFetch=globalThis.fetch;globalThis.fetch=async()=>{throw new TypeError('QA_OFFLINE')}});
