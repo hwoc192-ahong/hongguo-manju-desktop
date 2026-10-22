@@ -282,7 +282,10 @@ export class ContentProvider {
     if (!record(model) || (!Array.isArray(model.video_list) && !record(model.video_list))) fail('INVALID_RESOURCE_MODEL', '播放资源模型无效。');
     // The verified native player model uses status=10 for success; this differs from API code=0.
     if (model.status != null && Number(model.status) !== 0 && Number(model.status) !== 10) fail('RESOURCE_UNAVAILABLE', '此分集的播放资源暂不可用。');
-    const available = Object.values(model.video_list).filter(record);
+    const available = Object.values(model.video_list).filter(record).map(track => record(track.video_meta) ? {
+      main_url:track.main_url,codec_type:track.video_meta.codec_type,definition:track.video_meta.definition,size:track.video_meta.size,
+      encrypt:track.encrypt_info?.encrypt,encryption_method:track.encrypt_info?.encryption_method,spade_a:track.encrypt_info?.spade_a,
+    } : track);
     if (!available.length) fail('RESOURCE_UNAVAILABLE', '此分集没有可播放的视频轨道。');
     // Some episodes provide bytevc2 at every lower definition and HEVC only
     // at 1080p. Choose a decodable track before applying quality preference.

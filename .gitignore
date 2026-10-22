@@ -1,5 +1,6 @@
 node_modules/
 outputs/
+work/
 research/upstream/
 research/sign-test/
 research/runtime/

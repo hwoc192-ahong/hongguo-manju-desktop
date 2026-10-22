@@ -22,8 +22,10 @@ test('playback obtains resources with a persisted installation identity and no l
   const url=new URL(String(input));const headers=new Headers(init.headers);
   if(!/^[1-9]\d{18}$/.test(url.searchParams.get('device_id')??'')||!/^[1-9]\d{18}$/.test(url.searchParams.get('iid')??'')||headers.has('X-Argus'))return new Response('');
   identities.push(`${url.searchParams.get('device_id')}:${url.searchParams.get('iid')}`);
-  assert.equal(url.searchParams.get('aid'),'8704');assert.deepEqual(JSON.parse(init.body),body);
-  return Response.json({code:0,data:{video_model:{status:10,video_duration:153.206,video_list:[{main_url:'https://media.example/episode',definition:'540p',codec_type:'bytevc1',size:9754856,encrypt:false}]}}});
+  assert.equal(url.hostname,'api5-normal-sinfonlineb.fqnovel.com');assert.equal(url.pathname,'/novel/player/multi_video_model/v1/');
+  assert.equal(url.searchParams.get('aid'),'8662');assert.equal(url.searchParams.get('version_code'),'73532');
+  const payload=JSON.parse(init.body);assert.deepEqual(payload.mixed_video_id_map,{'1':[VID]});assert.equal(payload.biz_param.video_platform,1024);
+  return Response.json({code:0,data:{[VID]:{video_model:{status:10,video_duration:153.206,video_list:[{main_url:'https://media.example/episode',definition:'540p',codec_type:'bytevc1',size:9754856,encrypt:false}]}}}});
  });
  const first=await new ContentProvider(new Transport(signer,dir)).getResource(VID);
  const reopened=await new ContentProvider(new Transport(signer,dir)).getResource(VID);
@@ -36,7 +38,7 @@ test('playback obtains resources with a persisted installation identity and no l
 test('concurrent playback requests reuse one identity and callers cannot override it',async t=>fixture(async dir=>{
  const signer=new Signer('unused');t.mock.method(signer,'sign',async()=>({}));
  const ids:string[]=[];
- t.mock.method(globalThis,'fetch',async(input:any)=>{const u=new URL(String(input));ids.push(`${u.searchParams.get('device_id')}:${u.searchParams.get('iid')}`);return Response.json({code:0,data:{}})});
+ t.mock.method(globalThis,'fetch',async(input:any)=>{const u=new URL(String(input));ids.push(`${u.searchParams.get('device_id')}:${u.searchParams.get('iid')}`);return Response.json({code:0,data:{[VID]:{video_model:{}}}})});
  const transport=new Transport(signer,dir);
  await Promise.all([transport.request(endpoint,body),transport.request(endpoint,body,{device_id:'invalid',iid:'invalid'})]);
  assert.equal(new Set(ids).size,1);assert.doesNotMatch(ids[0],/invalid|null/);
@@ -47,7 +49,7 @@ test('a failed playback request does not rotate the stored identity on retry',as
  const ids:string[]=[];
  t.mock.method(globalThis,'fetch',async(input:any)=>{
   const url=new URL(String(input));ids.push(`${url.searchParams.get('device_id')}:${url.searchParams.get('iid')}`);
-  return ids.length===1?new Response(''):Response.json({code:0,data:{}});
+  return ids.length===1?new Response(''):Response.json({code:0,data:{[VID]:{video_model:{}}}});
  });
  const transport=new Transport(signer,dir);
  await assert.rejects(transport.request(endpoint,body),{code:'API_EMPTY'});
@@ -78,4 +80,13 @@ test('catalog requests keep the signed transport and do not require a player ide
  });
  await new Transport(signer,dir).request('/reading/bookapi/bookmall/cell/change/v');
  assert.equal(sign.mock.callCount(),1);await assert.rejects(readFile(path.join(dir,'player-profile.json')),{code:'ENOENT'});
+}));
+
+test('batch playback refuses another episode, missing models and business errors',async t=>fixture(async dir=>{
+ const signer=new Signer('unused');const transport=new Transport(signer,dir);
+ for(const response of [{code:0,data:{other:{video_model:{}}}},{code:0,data:{[VID]:{}}},{code:7,data:{[VID]:{video_model:{}}}}]){
+  t.mock.method(globalThis,'fetch',async()=>Response.json(response));
+  await assert.rejects(transport.request(endpoint,body),{code:response.code===7?'API_UNAVAILABLE':'API_FORMAT'});
+  t.mock.restoreAll();
+ }
 }));

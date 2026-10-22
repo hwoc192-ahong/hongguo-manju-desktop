@@ -44,18 +44,27 @@ export class Transport implements ApiTransport {
  }
  async request(endpoint:string,body?:unknown,extra:Record<string,string|number|boolean>={}){
   if(!/^\/(?:novel\/player\/|reading\/bookapi\/)/.test(endpoint))throw new AppError('INVALID_ENDPOINT','内容接口无效');
-  const url=new URL(endpoint,'https://api5-normal-sinfonlinea.fqnovel.com');
-  for(const [k,v] of Object.entries({aid:'8704',app_name:'novelread',version_code:'72232',version_name:'7.2.2.32',channel:'audit',device_platform:'android',os_version:'12',update_version_code:'72232',_rticket:Date.now(),...extra}))url.searchParams.set(k,String(v));
   const playback=endpoint==='/novel/player/video_model/v1/';
-  // The current public player requires a stable installation identity. Legacy
-  // cross-app security headers make this endpoint return an empty HTTP 200.
-  if(playback)for(const [key,value] of Object.entries(await this.identity()))url.searchParams.set(key,value);
-  const payload=body===undefined?undefined:JSON.stringify(body);const headers:Record<string,string>={'user-agent':'HongguoTV/0.1','content-type':'application/json; charset=utf-8',...(payload?{'x-ss-stub':createHash('md5').update(payload).digest('hex').toUpperCase()}: {})};
+  let requestBody=body;
+  if(playback){
+   const value=body as {video_id?:unknown};
+   if(!value||typeof value.video_id!=='string'||!/^\d{8,24}$/.test(value.video_id))throw new AppError('INVALID_INPUT','播放分集编号无效');
+   requestBody={mixed_video_id_map:{'1':[value.video_id]},biz_param:{detail_page_version:0,device_level:3,disable_digg_stat:false,disable_video_relate_book:false,need_all_video_definition:true,need_mp4_align:false,use_os_player:false,use_server_dns:false,video_platform:1024}};
+  }
+  const url=new URL(playback?'/novel/player/multi_video_model/v1/':endpoint,playback?'https://api5-normal-sinfonlineb.fqnovel.com':'https://api5-normal-sinfonlinea.fqnovel.com');
+  for(const [k,v] of Object.entries({aid:'8704',app_name:'novelread',version_code:'72232',version_name:'7.2.2.32',channel:'audit',device_platform:'android',os_version:'12',update_version_code:'72232',_rticket:Date.now(),...extra}))url.searchParams.set(k,String(v));
+  // Verified public guest batch contract, 2026-10-22. Reuse the existing
+  // installation identity; normalize only the requested episode's envelope.
+  if(playback){url.search='';for(const [key,value] of Object.entries({aid:'8662',app_name:'novelread',version_code:'73532',version_name:'7.3.5.32',manifest_version_code:'73532',update_version_code:'73532',channel:'update_64',device_platform:'android',os:'android',ssmix:'a',device_type:'25053RT47C',device_brand:'Redmi',language:'zh',os_api:'36',os_version:'16',resolution:'1280*2772',dpi:'520',ac:'wifi',...await this.identity()}))url.searchParams.set(key,value)}
+  const payload=requestBody===undefined?undefined:JSON.stringify(requestBody);const headers:Record<string,string>={'user-agent':'HongguoTV/0.1','content-type':'application/json; charset=utf-8',...(payload?{'x-ss-stub':createHash('md5').update(payload).digest('hex').toUpperCase()}: {})};
+  if(playback)Object.assign(headers,{'user-agent':'com.phoenix.read/73532 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)',accept:'application/json','x-xs-from-web':'0','sdk-version':'2'});
   const signatures=playback?{}:await this.signer.sign(url.href,headers);let response:Response;
   try{response=await fetch(url,{method:payload?'POST':'GET',headers:{...headers,...signatures},body:payload,signal:AbortSignal.timeout(25000)})}catch{throw new AppError('NETWORK','无法连接内容来源，请检查网络后重试')}
   if(!response.ok)throw new AppError('API_HTTP',`内容来源暂不可用（${response.status}）`);
   const text=await response.text();if(!text.trim())throw new AppError('API_EMPTY','内容来源返回空结果，请稍后重试');if(text.length>8*1024*1024)throw new AppError('API_FORMAT','内容返回过大');
   let json:any;try{json=safeJson(text)}catch{throw new AppError('API_FORMAT','内容来源的数据格式发生变化')}
-  if(json.code!==undefined&&json.code!==0)throw new AppError('API_UNAVAILABLE',`内容来源暂不可用（代码 ${Number(json.code)||'未知'}）`);return json;
+  if(json.code!==undefined&&json.code!==0)throw new AppError('API_UNAVAILABLE',`内容来源暂不可用（代码 ${Number(json.code)||'未知'}）`);
+  if(playback){const item=json.data?.[(body as {video_id:string}).video_id];if(json.code!==0||!item||typeof item!=='object'||!item.video_model)throw new AppError('API_FORMAT','内容来源未返回当前分集的播放资源');return {...json,data:item}}
+  return json;
  }
 }

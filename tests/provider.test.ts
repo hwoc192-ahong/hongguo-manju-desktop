@@ -16,6 +16,13 @@ const make = (api: ApiTransport, fetcher?: typeof fetch) => {
   return new providerModule.ContentProvider(api, fetcher ? { fetch: fetcher } : undefined);
 };
 
+test('nested batch track metadata preserves codec selection and requires explicit encryption',async()=>{
+ const track={main_url:'https://media.example/video.mp4',video_meta:{codec_type:'bytevc1',definition:'1080p',size:1234},encrypt_info:{encrypt:true,encryption_method:'cenc-aes-ctr',spade_a:'test-key'}};
+ const provider=(value:any)=>make(transport(()=>({code:0,data:{video_model:{status:10,video_duration:45,video_list:[value]}}})));
+ const r=await provider(track).getResource(VID);assert.equal(r.codec,'bytevc1');assert.equal(r.definition,'1080p');assert.equal(r.size,1234);assert.equal(r.encrypted,true);assert.equal(r.spade,'test-key');
+ await assert.rejects(provider({...track,encrypt_info:{}}).getResource(VID),errorCode('UNKNOWN_ENCRYPTION'));
+});
+
 test('series preserves exact string identifiers, verifies shape and sorts episodes', async () => {
   let requestBody: any;
   const provider = make(transport((path, body) => { assert.equal(path, '/novel/player/multi_video_detail/v1/'); requestBody = body; return detail(); }));
