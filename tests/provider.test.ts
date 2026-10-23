@@ -110,13 +110,12 @@ test('a resource with only unsupported codecs fails before download with an expl
 });
 
 const page = (data: any) => `<script>window._ROUTER_DATA = ${JSON.stringify({ loaderData: data })};</script>`;
-test('web search returns exact matching works and does not invent pagination', async () => {
-  const html = page({ search: { isSuccess: true, searchList: [{ name: '测试漫剧', video_data: { series_id: SID, series_cover: 'cover', episode_cnt: 2 } }], totalCount: 100 } });
-  const fetcher = (async (url: any) => { assert.equal(new URL(url).pathname, '/search/测试漫剧'.replace('测试漫剧', encodeURIComponent('测试漫剧'))); return new Response(html); }) as typeof fetch;
+test('official JSON search uses query and confirmed ten-result page cursor', async () => {
+  const fetcher = (async (input: any, init:any) => {const url=new URL(input);assert.equal(url.pathname,'/api/search/result');assert.equal(url.searchParams.get('query'),'测试漫剧');assert.equal(new Headers(init.headers).get('accept'),'application/json');const pageNum=Number(url.searchParams.get('page')||1);return Response.json({searchList:[{name:'测试漫剧',video_data:{series_id:SID,series_cover:'cover',episode_cnt:2}}],pageNum,totalPages:2,hasMore:pageNum===1});}) as typeof fetch;
   const provider = make(transport(() => { throw new Error('not native search'); }), fetcher);
   const result = await provider.search('测试漫剧');
-  assert.equal(result.items[0].id, SID); assert.equal(result.hasMore, false);
-  assert.deepEqual((await provider.search('测试漫剧', result.nextOffset)).items, []);
+  assert.equal(result.items[0].id, SID); assert.equal(result.hasMore, true);assert.equal(result.nextOffset,10);
+  assert.equal((await provider.search('测试漫剧', result.nextOffset)).hasMore,false);
 });
 
 test('share imports follow only official source redirects and cross-check title and episodes', async () => {
@@ -133,10 +132,11 @@ test('share imports follow only official source redirects and cross-check title 
   await assert.rejects(make(transport(() => changed), (async () => new Response(html)) as typeof fetch).resolveShare('https://hainanyuyue.com/share/video-animation-share'), errorCode('SHARE_MISMATCH'));
 });
 
-test('JSON page parsing preserves unquoted 19 digit IDs without executing scripts', async () => {
-  const html = `<script>window._ROUTER_DATA = {"loaderData":{"search":{"isSuccess":true,"searchList":[{"name":"大整数作品","video_data":{"series_id":${SID},"episode_cnt":2}}]}}}; globalThis.providerScriptExecuted = true;</script>`;
-  const provider = make(transport(() => null), (async () => new Response(html)) as typeof fetch);
+test('JSON search preserves unquoted 19 digit IDs and never executes scripts', async () => {
+  const json = `{"searchList":[{"name":"大整数作品","video_data":{"series_id":${SID},"episode_cnt":2}}],"pageNum":1,"totalPages":1,"hasMore":false}`;
+  const provider = make(transport(() => null), (async () => new Response(json)) as typeof fetch);
   assert.equal((await provider.search('大整数作品')).items[0].id, SID);
+  await assert.rejects(make(transport(()=>null),(async()=>new Response('<script>globalThis.providerScriptExecuted=true</script>')) as typeof fetch).search('测试'),errorCode('INVALID_SEARCH_DATA'));
   assert.equal((globalThis as any).providerScriptExecuted, undefined);
 });
 
@@ -163,10 +163,20 @@ test('share URL credentials and lookalike domains are rejected before network ac
 
 test('temporary public search HTTP failure retries once without substituting results', async () => {
   let calls = 0;
-  const html = page({ search: { isSuccess: true, searchList: [{ name: '测试漫剧', video_data: { series_id: SID } }] } });
+  const html = JSON.stringify({searchList:[{name:'测试漫剧',video_data:{series_id:SID}}],pageNum:1,totalPages:1,hasMore:false});
   const fetcher = (async () => ++calls === 1 ? new Response('temporary', { status: 500 }) : new Response(html)) as typeof fetch;
   const result = await make(transport(() => null), fetcher).search('测试漫剧');
   assert.equal(calls, 2); assert.equal(result.items[0].id, SID);
+});
+
+test('JSON search rejects mismatched or absent pagination and filters actor cards',async()=>{
+ const valid={searchList:[{name:'演员',keyword:SID,user_info:{}},{name:'作品',video_data:{series_id:SID}}],pageNum:1,totalPages:1,hasMore:false};
+ const provider=(data:any)=>make(transport(()=>null),(async()=>Response.json(data)) as typeof fetch);
+ assert.equal((await provider(valid).search('测试')).items.length,1);
+ for(const data of [{...valid,pageNum:2},{...valid,hasMore:true},{...valid,totalPages:undefined},{code:'upstream_unavailable'}])await assert.rejects(provider(data).search('测试'));
+ let calls=0;const p=make(transport(()=>null),(async()=>{calls++;return Response.json(valid)}) as typeof fetch);
+ await assert.rejects(p.search('测'.repeat(31)),errorCode('INVALID_QUERY'));
+ await assert.rejects(p.search('测试',1),errorCode('INVALID_OFFSET'));assert.equal(calls,0);
 });
 
 test('native model status 10 with success is playable while failed model statuses are rejected', async () => {

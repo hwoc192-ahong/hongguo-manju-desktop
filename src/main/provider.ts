@@ -147,18 +147,18 @@ export class ContentProvider {
     }
   }
 
-  private async page(url: URL, share: boolean): Promise<string> {
+  private async page(url: URL, share: boolean, accept='text/html'): Promise<string> {
     const visited = new Set<string>();
     for (let hop = 0; hop < 6; hop++) {
       this.validatePageUrl(url, share);
       if (visited.has(url.href)) fail('REDIRECT_LOOP', '分享链接发生循环跳转。');
       visited.add(url.href);
       let response: Response;
-      try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { Accept: 'text/html' } }); }
+      try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { Accept: accept } }); }
       catch { fail('NETWORK_ERROR', '网页加载失败，请稍后重试。'); }
       if (response.status === 429 || response.status >= 500) {
         await response.body?.cancel();
-        try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { Accept: 'text/html' } }); }
+        try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { Accept: accept } }); }
         catch { fail('NETWORK_ERROR', '网页加载失败，请稍后重试。'); }
       }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
@@ -194,26 +194,31 @@ export class ContentProvider {
   }
 
   async search(query: string, offset = 0): Promise<Catalog> {
-    if (typeof query !== 'string' || !query.trim() || query.length > 200) fail('INVALID_QUERY', '请输入不超过 200 字的搜索关键词。');
+    if (typeof query !== 'string' || !query.trim() || Array.from(query.trim()).length > 30) fail('INVALID_QUERY', '请输入不超过 30 字的搜索关键词。');
     offsetValue(offset);
+    if(offset%10!==0||offset>2147483647)fail('INVALID_OFFSET','搜索分页位置无效。');
     const label = `搜索：${query.trim()}`;
-    // The verified web search page exposes one result set, but no supported cursor.
-    if (offset > 0) return { items: [], hasMore: false, nextOffset: offset, label, source: '网页搜索页' };
-    const html = await this.page(new URL(`/search/${encodeURIComponent(query.trim())}`, WEB_ORIGIN), false);
-    const models = routerData(html).loaderData;
-    const model = Object.values(record(models) ? models : {}).find(value => record(value) && Array.isArray(value.searchList)) as RecordData | undefined;
-    if (!model) fail('INVALID_SEARCH_DATA', '搜索页面没有可核对的作品列表。');
-    if (model.isSuccess !== true) fail('SEARCH_FAILED', '搜索服务暂时不可用，请稍后重试。');
+    // Official site now loads results as JSON, with ten source entries per page.
+    // Advance by server page, not filtered work count (results can include actors).
+    const pageNum=offset/10+1,url=new URL('/api/search/result',WEB_ORIGIN);
+    url.searchParams.set('query',query.trim());if(pageNum>1)url.searchParams.set('page',String(pageNum));
+    let model:RecordData;
+    try{model=safeJson(await this.page(url,false,'application/json'))}catch(error){if(error instanceof ProviderError)throw error;fail('INVALID_SEARCH_DATA','搜索来源返回的数据格式无效。')}
+    if(!record(model)||!Array.isArray(model.searchList)||model.code!=null||model.isSuccess===false)fail('INVALID_SEARCH_DATA','搜索来源没有返回有效作品列表。');
+    if(model.pageNum!==pageNum||!Number.isSafeInteger(model.totalPages)||model.totalPages<0||typeof model.hasMore!=='boolean'||
+       model.hasMore!==(pageNum<model.totalPages)||(model.totalPages===0&&(pageNum!==1||model.searchList.length!==0))||
+       (model.totalPages>0&&pageNum>model.totalPages))fail('INVALID_PAGINATION','搜索来源返回的分页信息无效。');
     const items: Work[] = [];
     for (const entry of model.searchList) {
       if (!record(entry)) continue;
-      const video = record(entry.video_data) ? entry.video_data : {};
+      if(!record(entry.video_data))continue;
+      const video = entry.video_data;
       const candidate = video.series_id ?? entry.keyword;
       if (candidate == null || (typeof candidate === 'string' && !ID.test(candidate))) continue;
       items.push(work({ ...video, series_id: candidate, series_title: entry.name || video.series_title || video.series_name }));
     }
     const unique = [...new Map(items.map(item => [item.id, item])).values()];
-    return { items: unique, hasMore: false, nextOffset: unique.length, label, source: '网页搜索页' };
+    return { items: unique, hasMore: model.hasMore, nextOffset: offset+10, label, source: '官方网页搜索接口' };
   }
 
   async resolveShare(input: string): Promise<Series> {
