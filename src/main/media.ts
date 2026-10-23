@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';import {spawn} from 'node:child_process';import {mkdir,writeFile,readFile,stat,statfs,unlink,rename,readdir,open} from 'node:fs/promises';import {createReadStream} from 'node:fs';import {Readable} from 'node:stream';import path from 'node:path';
-import type {Resource,Playback,BufferState} from '../shared/types';import {AppError} from './errors';import {validId} from './library';
+import type {Resource,Playback,BufferState,CacheActivity} from '../shared/types';import {AppError} from './errors';import {validId} from './library';
 
 export function parseRange(header:string|null,size:number):{start:number;end:number;status:number}|null{
  if(!Number.isSafeInteger(size)||size<=0)return null;if(!header)return {start:0,end:size-1,status:200};
@@ -27,6 +27,7 @@ interface CacheEntry { key:string; file:string; episodeId:string; duration:numbe
 const CACHE_POLICY='highest-resolution-crf20-v1';
 interface MediaJob {
  id:string; force:boolean; foreground:boolean; controller:AbortController;
+ progress?:CacheActivity;
  promise:Promise<Playback>; resolve:(value:Playback)=>void; reject:(error:unknown)=>void;
 }
 const CACHE_LIMIT=1024*1024*1024;
@@ -77,7 +78,7 @@ export class MediaCache {
   const currentFailed=this.failed.has(this.window[0])&&!this.entries.has(this.window[0]);
   const status:BufferState['status']=!total?'idle':ready===total?'complete':this.pausedMessage?'paused':currentFailed?'partial':activeId||ready+failed<total?'preparing':'partial';
   const message=status==='paused'?this.pausedMessage:status==='complete'?'全剧已缓存，可直接播放已缓存剧集':status==='partial'?'部分剧集准备失败，可重试缓存':'';
-  return {status,total,ready,failed,activeId,message};
+  return {status,total,ready,failed,activeId,active:activeId&&this.active?.progress?{...this.active.progress}:undefined,message};
  }
  retryBuffer(){
   if(this.closing)return this.bufferState();this.pausedMessage='';this.failed.clear();
@@ -133,7 +134,7 @@ export class MediaCache {
   const signal=job.controller.signal;let last:unknown;
   for(let attempt=0;attempt<2;attempt++){
    check(signal);
-   try{await this.ensureSpace(signal);const resource=await abortable(this.getResource(job.id),signal);check(signal);return await this.create(resource,signal)}
+   try{job.progress={stage:'resolving'};await this.ensureSpace(signal);const resource=await abortable(this.getResource(job.id),signal);check(signal);return await this.create(resource,signal,progress=>{if(!signal.aborted)job.progress=progress})}
    catch(error){last=error;if(signal.aborted||this.closing)throw cancelled();if(error instanceof AppError&&['DISK_SPACE','DISK_CHECK'].includes(error.code))throw error}
   }
   throw last;
@@ -148,19 +149,22 @@ export class MediaCache {
   }catch(error){check(signal);if(error instanceof AppError)throw error;throw new AppError('DISK_CHECK','无法检查缓存磁盘空间，已暂停准备新剧集；请检查磁盘后重试缓存')}
  }
  private result(e:CacheEntry):Playback{return {url:`manju-media://local/${e.key}`,duration:e.duration,definition:e.definition,episodeId:e.episodeId}}
- private async create(resource:Resource,signal:AbortSignal):Promise<Playback>{
+ private async create(resource:Resource,signal:AbortSignal,report:(activity:CacheActivity)=>void):Promise<Playback>{
   check(signal);
   if(!(resource.duration>0)||resource.duration>1800||!(resource.size>0)||resource.size>FILE_LIMIT)throw new AppError('UNSUPPORTED_RESOURCE','播放资源不完整或大小暂不支持');
   const key=randomUUID().replaceAll('-','');const input=path.join(this.directory,key+'.input.mp4'),working=path.join(this.directory,key+'.working.mp4'),output=path.join(this.directory,key+'.mp4');
   const metadata=path.join(this.directory,key+'.json');let committed=false;
   const contentKey=resource.encrypted?decodeContentKey(resource.spade||''):null;
   try{
+   report({stage:'downloading',transferred:0,total:resource.size,percent:0});
    let response:Response;try{response=await fetch(resource.url,{signal:AbortSignal.any([signal,AbortSignal.timeout(45000)])})}catch{check(signal);throw new AppError('NETWORK','视频连接失败，请检查网络后重试')}
    check(signal);
    if(!response.ok||!response.body)throw new AppError('RESOURCE_EXPIRED','视频资源已失效，请重试当前集');
-   const handle=await open(input,'w');let bytes=0;try{for await(const chunk of response.body){check(signal);bytes+=chunk.length;if(bytes>resource.size)throw new AppError('INCOMPLETE_RESOURCE','视频资源大小不一致');await handle.write(chunk)}}finally{await handle.close()}
+   const handle=await open(input,'w');let bytes=0;try{for await(const chunk of response.body){check(signal);bytes+=chunk.length;if(bytes>resource.size)throw new AppError('INCOMPLETE_RESOURCE','视频资源大小不一致');await handle.write(chunk);report({stage:'downloading',transferred:bytes,total:resource.size,percent:Math.floor(bytes/resource.size*100)})}}finally{await handle.close()}
    check(signal);if(bytes!==resource.size)throw new AppError('INCOMPLETE_RESOURCE','视频读取不完整，请重试当前集');
-   await this.transcode(input,working,contentKey,resource.duration,signal);contentKey?.fill(0);check(signal);
+   report({stage:'processing',percent:0});
+   await this.transcode(input,working,contentKey,resource.duration,signal,percent=>report({stage:'processing',percent}));contentKey?.fill(0);check(signal);
+   report({stage:'finalizing'});
    const info=await stat(working);if(info.size<=0||info.size>FILE_LIMIT)throw new AppError('MEDIA_CACHE','单集缓存超过大小限制');
    await rename(working,output);check(signal);
    const entry:CacheEntry={key,file:output,episodeId:resource.episodeId,duration:resource.duration,definition:resource.definition,touched:Date.now(),policy:CACHE_POLICY};
@@ -171,7 +175,7 @@ export class MediaCache {
   }catch(error){check(signal);if(error instanceof AppError)throw error;throw new AppError('MEDIA_CACHE','视频准备失败，请检查磁盘空间后重试当前集')}
   finally{contentKey?.fill(0);await unlink(input).catch(()=>{});await unlink(working).catch(()=>{});if(!committed){await unlink(output).catch(()=>{});await unlink(metadata).catch(()=>{})}}
  }
- private transcode(input:string,output:string,key:Buffer|null,duration:number,signal:AbortSignal):Promise<void>{
+ private transcode(input:string,output:string,key:Buffer|null,duration:number,signal:AbortSignal,report:(percent:number)=>void):Promise<void>{
   check(signal);
   return new Promise((resolve,reject)=>{
    const args=['-hide_banner','-loglevel','error','-nostats','-progress','pipe:1',...(key?['-decryption_key',key.toString('hex')]:[]),'-i',input,'-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2','-c:v','libx264','-preset','veryfast','-threads','2','-crf','20','-c:a','aac','-movflags','+faststart','-y',output];
@@ -179,7 +183,7 @@ export class MediaCache {
    const abort=()=>{child.kill()};signal.addEventListener('abort',abort,{once:true});
    const timeout=setTimeout(()=>child.kill(),180000);
    const cleanup=()=>{clearTimeout(timeout);signal.removeEventListener('abort',abort)};
-   child.stdout.on('data',data=>{progress+=data;if(progress.length>50000)progress=progress.slice(-25000)});child.stderr.resume();
+   child.stdout.on('data',data=>{progress+=data;if(progress.length>50000)progress=progress.slice(-25000);const actual=Number([...progress.matchAll(/^out_time_us=(\d+)\r?\n/gm)].at(-1)?.[1])/1e6;if(Number.isFinite(actual))report(Math.max(0,Math.min(99,Math.floor(actual/duration*100))))});child.stderr.resume();
    child.once('error',()=>{cleanup();reject(signal.aborted?cancelled():new AppError('MEDIA_RUNTIME','媒体组件无法启动'))});
    child.once('close',code=>{cleanup();const actual=Number([...progress.matchAll(/^out_time_us=(\d+)$/gm)].at(-1)?.[1])/1e6;signal.aborted?reject(cancelled()):code===0&&Math.abs(actual-duration)<1?resolve():reject(new AppError('MEDIA_DECODE','视频处理未完成，请重试当前集'))});
   });

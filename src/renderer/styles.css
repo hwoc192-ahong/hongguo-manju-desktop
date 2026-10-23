@@ -164,10 +164,18 @@ h1 { margin: 0; font-family: var(--display-font); font-size: 30px; line-height: 
 .player-error .state-icon { margin-bottom: 7px; background: #c9432c18; color: #dfaa97; border-color: #c9432c40; }
 .player-error .primary-button { margin-top: 15px; }
 .buffering { position: absolute; display: flex; align-items: center; flex-direction: column; gap: 15px; background: #151310cc; padding: 24px; border-radius: 12px; font-size: 12px; color: #e7ded1; }
-.series-buffer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 18px; color: var(--muted); font-size: 12px; }
-.series-buffer > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
-.series-buffer strong { color: var(--ink); font-weight: 500; }
-.series-buffer .secondary-button { flex-shrink: 0; padding: 6px 10px; font-size: 12px; }
+.series-buffer { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 12px; }
+.cache-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.cache-heading strong { color: var(--ink); font-weight: 500; }
+.cache-heading b { margin-left: auto; color: var(--brand); font-variant-numeric: tabular-nums; }
+.series-buffer .secondary-button { padding: 4px 8px; font-size: 12px; }
+.cache-progress { appearance: none; display: block; width: 100%; height: 6px; margin: 10px 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--line); accent-color: var(--brand); }
+.cache-progress::-webkit-progress-bar { background: var(--line); }
+.cache-progress::-webkit-progress-value { background: var(--brand); border-radius: 8px; transition: width .3s; }
+.cache-detail { display: flex; flex-wrap: wrap; gap: 8px 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.fullscreen-cache { display: none; }
+.player-surface:fullscreen .fullscreen-cache { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 7px 16px 0; color: #e7ded1; font-size: 12px; }
+.fullscreen-cache span { opacity: .75; }
 .big-play { position: absolute; width: 64px; height: 64px; display: grid; place-items: center; background: var(--brand); color: white; border-radius: 50%; }
 .big-play svg { margin-left: 4px; }
 .big-play:hover { background: #b73925; transform: scale(1.04); }

@@ -6,9 +6,13 @@ export interface Catalog { items: Work[]; hasMore: boolean; nextOffset: number; 
 export interface Progress { seriesId: string; episodeId: string; order: number; time: number; duration: number; updatedAt: number; work: Work }
 export interface Library { favorites: Work[]; history: Progress[] }
 export interface Playback { url: string; duration: number; definition: string; episodeId: string }
+export interface CacheActivity {
+ stage:'resolving'|'downloading'|'processing'|'finalizing';
+ percent?:number; transferred?:number; total?:number;
+}
 export interface BufferState {
  status:'idle'|'preparing'|'complete'|'partial'|'paused';
- total:number; ready:number; failed:number; activeId?:string; message:string;
+ total:number; ready:number; failed:number; activeId?:string; active?:CacheActivity; message:string;
 }
 export interface Result<T> { ok: boolean; data?: T; error?: { code: string; message: string } }
 export interface UpdateState {

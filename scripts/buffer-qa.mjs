@@ -22,7 +22,7 @@ const requests=[],windows=[],playbacks=[];let offline=false;global.goOffline=()=
 global.qa=async()=>({requests,windows,playbacks,buffer:media.bufferState(),completed:await Promise.all((await fs.readdir(${JSON.stringify(path.join(output,'cache'))})).filter(n=>n.endsWith('.json')).map(async n=>JSON.parse(await fs.readFile(require('node:path').join(${JSON.stringify(path.join(output,'cache'))},n),'utf8')).episodeId))});
 app.whenReady().then(async()=>{
  const bytes=await fs.readFile(${JSON.stringify(video)});
- server=http.createServer((req,res)=>{requests.push(req.url.slice(1));if(offline){res.writeHead(503);res.end();return;}setTimeout(()=>{res.writeHead(200,{'content-type':'video/mp4'});res.end(bytes)},150)});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ server=http.createServer((req,res)=>{requests.push(req.url.slice(1));if(offline){res.writeHead(503);res.end();return;}const half=Math.ceil(bytes.length/2);res.writeHead(200,{'content-type':'video/mp4'});res.write(bytes.subarray(0,half));setTimeout(()=>res.end(bytes.subarray(half)),1800)});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  media=new MediaCache(${JSON.stringify(path.join(output,'cache'))},${JSON.stringify(ffmpeg)},async id=>({episodeId:id,duration:10,definition:'test',codec:'h264',encrypted:false,url:'http://127.0.0.1:'+server.address().port+'/'+id,size:bytes.length}));await media.init();
  protocol.handle('manju-media',request=>media.response(request.url,request.headers.get('range')));
  const handle=(channel,fn)=>ipcMain.handle(channel,async(_event,...args)=>{try{return {ok:true,data:await fn(...args)}}catch(e){return {ok:false,error:{code:e.code,message:e.message}}}});
@@ -42,15 +42,21 @@ try{
  const state=()=>app.evaluate(()=>global.qa());
  const until=async check=>{for(let i=0;i<400;i++){const value=await state();if(check(value))return value;await page.waitForTimeout(50)}assert.fail('buffer QA timeout')};
  const playing=async order=>{await page.waitForSelector(`.player[aria-label="第${order}集播放器"] video`);await page.waitForFunction(()=>{const v=document.querySelector('video');return v&&!v.paused&&v.currentTime>.1;})};
- await page.locator('.work-card').first().click();await playing(1);await page.getByRole('button',{name:'暂停',exact:true}).click();
+ await page.locator('.work-card').first().click();
+ await page.locator('.series-buffer').getByText(/第 1 集 · 下载 50%/).waitFor();
+ const bar=page.getByRole('progressbar',{name:'整剧已缓存集数'});assert.equal(await bar.getAttribute('value'),'0');assert.equal(await bar.getAttribute('max'),'8');
+ const bounds=await bar.boundingBox();assert.ok(bounds.y>=0&&bounds.y+bounds.height<800,'progress must be visible above the player');
+ await page.screenshot({path:path.join(output,'cache-downloading.png')});events.push('visible progress bar reports 0/8 while episode 1 downloads at 50%, using real bytes');
+ await playing(1);await page.getByRole('button',{name:'暂停',exact:true}).click();
  snapshot=await until(s=>s.buffer.status==='complete');assert.deepEqual(snapshot.requests,ids);assert.deepEqual(snapshot.windows.at(-1),ids);assert.equal(snapshot.completed.length,8);
- await page.getByText('已缓存 8/8 集',{exact:true}).waitFor();await page.getByText('全剧已缓存',{exact:true}).waitFor();
+ await page.locator('.series-buffer').getByText('已缓存 8/8 集',{exact:true}).waitFor();await page.locator('.series-buffer').getByText('全剧已缓存',{exact:true}).waitFor();assert.equal(await bar.getAttribute('value'),'8');
  events.push('opening episode 1 prepares every episode, beyond five, while paused; UI reports 8/8 complete');
  await page.screenshot({path:path.join(output,'full-series-ready.png')});
  // Make the fixture content endpoint unavailable; cached video still has to decode at 2x.
  await app.evaluate(()=>global.goOffline());
  await page.getByRole('combobox',{name:'播放倍速'}).selectOption('2');
  await page.getByRole('button',{name:'切换全屏'}).click();await page.waitForFunction(()=>!!document.fullscreenElement);await page.evaluate(()=>{window.qaSurface=document.fullscreenElement});
+ await page.locator('.fullscreen-cache').getByText(/整剧缓存 8\/8 集 · 100%/).waitFor();
  await page.getByRole('button',{name:'下一集',exact:true}).click();await playing(2);
  assert.equal(await page.locator('video').evaluate(v=>v.playbackRate),2);
  assert.equal(await page.evaluate(()=>document.fullscreenElement===window.qaSurface),true);

@@ -90,6 +90,32 @@ test('只接受有界的有效且不重复的剧集编号列表',async t=>{
  for(const value of [tooMany,['bad'],[ids[0],ids[0]],null])assert.throws(()=>f.media.setBufferWindow(value as any),{code:'INVALID_INPUT'});
 });
 
+test('缓存进度来自真实下载字节及处理时间，处理完成前不能计为已缓存',async t=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'manju-progress-'));
+ let resourceReady!:(value:any)=>void,stream!:ReadableStreamDefaultController<Uint8Array>;
+ const resource=new Promise<any>(resolve=>{resourceReady=resolve});
+ const child=Object.assign(new EventEmitter(),{stdout:new PassThrough(),stderr:new PassThrough(),kill:()=>{queueMicrotask(()=>child.emit('close',null));return true}});
+ let output='';
+ t.mock.method(childProcess,'spawn',(_exe:string,args:readonly string[])=>{output=args.at(-1)!;return child});
+ t.mock.method(globalThis,'fetch',async()=>new Response(new ReadableStream<Uint8Array>({start(controller){stream=controller}})));
+ syncBuiltinESMExports();const {MediaCache}=await import('../src/main/media');
+ const media=new MediaCache(dir,'fake-ffmpeg',()=>resource);
+ t.after(async()=>{await media.close();t.mock.restoreAll();syncBuiltinESMExports();await rm(dir,{recursive:true,force:true})});
+ await media.init();media.setBufferWindow([ids[0]]);const preparing=media.prepare(ids[0]);
+ assert.deepEqual(media.bufferState().active,{stage:'resolving'});
+ resourceReady({episodeId:ids[0],duration:1,definition:'1080p',codec:'h264',encrypted:false,url:'https://example.com/video',size:6});
+ await until(()=>!!stream);stream.enqueue(Buffer.from('sou'));
+ await until(()=>media.bufferState().active?.transferred===3);
+ assert.deepEqual(media.bufferState().active,{stage:'downloading',transferred:3,total:6,percent:50});assert.equal(media.bufferState().ready,0);
+ stream.enqueue(Buffer.from('rce'));stream.close();await until(()=>!!output);
+ child.stdout.write('out_time_us=50');assert.equal(media.bufferState().active?.percent,0);
+ child.stdout.write('0000\n');assert.deepEqual(media.bufferState().active,{stage:'processing',percent:50});
+ child.stdout.write('out_time_us=1000000\n');assert.equal(media.bufferState().active?.percent,99);assert.equal(media.bufferState().ready,0);
+ await writeFile(output,'prepared-video');child.emit('close',0);await preparing;
+ assert.equal(media.bufferState().ready,1);assert.equal(media.bufferState().status,'complete');assert.equal(media.bufferState().active,undefined);
+ media.setBufferWindow([]);assert.equal(media.bufferState().active,undefined);
+});
+
 test('打开首集后后台准备整部剧，超过五集也不中止，状态只有完整缓存才计数',async t=>{
  const f=await fixture(t,{hold:ids[8]});f.media.setBufferWindow(ids);
  assert.equal(f.media.bufferState().ready,0);await f.media.prepare(ids[0]);await until(()=>f.fetched.includes(ids[8]));
