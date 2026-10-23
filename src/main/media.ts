@@ -1,5 +1,5 @@
-import {randomUUID} from 'node:crypto';import {spawn} from 'node:child_process';import {mkdir,writeFile,readFile,stat,unlink,rename,readdir,open} from 'node:fs/promises';import {createReadStream} from 'node:fs';import {Readable} from 'node:stream';import path from 'node:path';
-import type {Resource,Playback} from '../shared/types';import {AppError} from './errors';import {validId} from './library';
+import {randomUUID} from 'node:crypto';import {spawn} from 'node:child_process';import {mkdir,writeFile,readFile,stat,statfs,unlink,rename,readdir,open} from 'node:fs/promises';import {createReadStream} from 'node:fs';import {Readable} from 'node:stream';import path from 'node:path';
+import type {Resource,Playback,BufferState} from '../shared/types';import {AppError} from './errors';import {validId} from './library';
 
 export function parseRange(header:string|null,size:number):{start:number;end:number;status:number}|null{
  if(!Number.isSafeInteger(size)||size<=0)return null;if(!header)return {start:0,end:size-1,status:200};
@@ -31,6 +31,7 @@ interface MediaJob {
 }
 const CACHE_LIMIT=1024*1024*1024;
 const FILE_LIMIT=150*1024*1024;
+const SPACE_RESERVE=1024*1024*1024;
 const cancelled=()=>new AppError('CANCELLED','播放准备已取消');
 function check(signal:AbortSignal){if(signal.aborted)throw cancelled()}
 // Resource lookups may finish late; cancellation must prevent them starting a download.
@@ -47,22 +48,41 @@ export class MediaCache {
  private jobs=new Map<string,MediaJob>();
  private active?:MediaJob;
  private window:string[]=[];
+ private protectedIds=new Set<string>();
+ private pausedMessage='';
  private failed=new Set<string>();
  private closing=false;
- constructor(private directory:string,private ffmpeg:string,private getResource:(id:string)=>Promise<Resource>){}
+ constructor(private directory:string,private ffmpeg:string,private getResource:(id:string)=>Promise<Resource>,private options:{freeBytes?:()=>Promise<number>}={}){}
  async init(){await mkdir(this.directory,{recursive:true});for(const name of await readdir(this.directory)){
   if(/^[a-f0-9]{32}\.json$/.test(name)){try{const e=JSON.parse(await readFile(path.join(this.directory,name),'utf8'));if(e.policy===CACHE_POLICY&&validId(e.episodeId)&&Number.isFinite(e.duration)&&e.duration>0&&typeof e.definition==='string'&&e.key===name.slice(0,32)){e.file=path.join(this.directory,e.key+'.mp4');const info=await stat(e.file);if(info.size>0&&info.size<=FILE_LIMIT)this.entries.set(e.episodeId,e)}}catch{}}
   if(/^[a-f0-9]{32}\.(?:input|working)\.mp4$/.test(name))await unlink(path.join(this.directory,name)).catch(()=>{});
  }
   const liveKeys=new Set([...this.entries.values()].map(e=>e.key));for(const name of await readdir(this.directory)){if(/^[a-f0-9]{32}\.(?:mp4|json)$/.test(name)&&!liveKeys.has(name.split('.')[0]))await unlink(path.join(this.directory,name)).catch(()=>{})}
-  await this.trim();
+  // Defer size/age eviction until a work is opened so a completed series survives restart.
  }
- setBufferWindow(ids:string[]):void{
-  if(!Array.isArray(ids)||ids.length>5||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw new AppError('INVALID_INPUT','缓冲剧集列表无效');
-  if(this.closing)return;
+ setBufferWindow(ids:string[]):BufferState{
+  if(!Array.isArray(ids)||ids.length>5000||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw new AppError('INVALID_INPUT','缓冲剧集列表无效');
+  if(this.closing)return this.bufferState();
+  const sameWork=ids.length===this.protectedIds.size&&ids.every(id=>this.protectedIds.has(id));
+  if(ids.length){this.protectedIds=new Set(ids);if(!sameWork)this.pausedMessage=''}
   this.window=[...ids];this.failed=new Set([...this.failed].filter(id=>ids.includes(id)));
-  for(const job of this.jobs.values())if(!ids.includes(job.id))this.cancel(job);
+  for(const job of this.jobs.values())if(!ids.includes(job.id)||(job.foreground&&job.id!==ids[0]))this.cancel(job);
   this.pump();
+  return this.bufferState();
+ }
+ bufferState():BufferState{
+  const total=this.window.length,ready=this.window.filter(id=>this.entries.has(id)).length;
+  const failed=this.window.filter(id=>!this.entries.has(id)&&this.failed.has(id)).length;
+  const activeId=this.active&&!this.active.controller.signal.aborted&&this.window.includes(this.active.id)?this.active.id:undefined;
+  const currentFailed=this.failed.has(this.window[0])&&!this.entries.has(this.window[0]);
+  const status:BufferState['status']=!total?'idle':ready===total?'complete':this.pausedMessage?'paused':currentFailed?'partial':activeId||ready+failed<total?'preparing':'partial';
+  const message=status==='paused'?this.pausedMessage:status==='complete'?'全剧已缓存，可直接播放已缓存剧集':status==='partial'?'部分剧集准备失败，可重试缓存':'';
+  return {status,total,ready,failed,activeId,message};
+ }
+ retryBuffer(){
+  if(this.closing)return this.bufferState();this.pausedMessage='';this.failed.clear();
+  if(this.window[0]&&!this.entries.has(this.window[0])&&!this.jobs.has(this.window[0]))this.enqueue(this.window[0],false,true);
+  this.pump();return this.bufferState();
  }
  prepare(id:string,force=false):Promise<Playback>{
   if(!validId(id))return Promise.reject(new AppError('INVALID_INPUT','剧集编号无效'));
@@ -91,7 +111,7 @@ export class MediaCache {
   if(this.closing||this.active)return;
   let job=[...this.jobs.values()].find(job=>job.foreground&&!job.controller.signal.aborted);
   // Start the advance buffer only after the current episode is ready.
-  if(!job&&this.window[0]&&this.entries.has(this.window[0])){
+  if(!job&&!this.pausedMessage&&this.window[0]&&this.entries.has(this.window[0])){
    const id=this.window.slice(1).find(id=>!this.entries.has(id)&&!this.failed.has(id)&&!this.jobs.has(id));
    if(id)job=this.enqueue(id,false,false);
   }
@@ -102,7 +122,10 @@ export class MediaCache {
    this.active=undefined;
   };
   void this.run(running).then(value=>{finish();running.resolve(value);this.pump()},error=>{
-   if(!running.controller.signal.aborted)this.failed.add(running.id);
+   if(!running.controller.signal.aborted){
+    if(error instanceof AppError&&['DISK_SPACE','DISK_CHECK'].includes(error.code))this.pausedMessage=error.message;
+    else this.failed.add(running.id);
+   }
    finish();running.reject(error);this.pump();
   });
  }
@@ -110,10 +133,19 @@ export class MediaCache {
   const signal=job.controller.signal;let last:unknown;
   for(let attempt=0;attempt<2;attempt++){
    check(signal);
-   try{const resource=await abortable(this.getResource(job.id),signal);check(signal);return await this.create(resource,signal)}
-   catch(error){last=error;if(signal.aborted||this.closing)throw cancelled()}
+   try{await this.ensureSpace(signal);const resource=await abortable(this.getResource(job.id),signal);check(signal);return await this.create(resource,signal)}
+   catch(error){last=error;if(signal.aborted||this.closing)throw cancelled();if(error instanceof AppError&&['DISK_SPACE','DISK_CHECK'].includes(error.code))throw error}
   }
   throw last;
+ }
+ private async ensureSpace(signal:AbortSignal){
+  check(signal);
+  try{
+   const free=async()=>this.options.freeBytes?this.options.freeBytes():statfs(this.directory).then(info=>info.bavail*info.bsize);
+   let available=await free();check(signal);
+   if(available<SPACE_RESERVE+2*FILE_LIMIT){await this.trim(true);available=await free();check(signal)}
+   if(!Number.isFinite(available)||available<SPACE_RESERVE+2*FILE_LIMIT)throw new AppError('DISK_SPACE','缓存空间不足，已暂停准备新剧集；请至少留出 1.3 GiB 可用空间后点击重试缓存');
+  }catch(error){check(signal);if(error instanceof AppError)throw error;throw new AppError('DISK_CHECK','无法检查缓存磁盘空间，已暂停准备新剧集；请检查磁盘后重试缓存')}
  }
  private result(e:CacheEntry):Playback{return {url:`manju-media://local/${e.key}`,duration:e.duration,definition:e.definition,episodeId:e.episodeId}}
  private async create(resource:Resource,signal:AbortSignal):Promise<Playback>{
@@ -158,14 +190,14 @@ export class MediaCache {
   const info=await stat(entry.file).catch(()=>null);if(!info)return new Response(null,{status:404});const slice=parseRange(range,info.size);if(!slice)return new Response(null,{status:416,headers:{'content-range':`bytes */${info.size}`}});
   entry.touched=Date.now();const stream=Readable.toWeb(createReadStream(entry.file,{start:slice.start,end:slice.end}));return new Response(stream as ReadableStream,{status:slice.status,headers:{'content-type':'video/mp4','accept-ranges':'bytes','content-length':String(slice.end-slice.start+1),...(slice.status===206?{'content-range':`bytes ${slice.start}-${slice.end}/${info.size}`}:{})}});
  }
- private async trim(){
+ private async trim(reclaim=false){
   const entries=[...this.entries.values()].sort((a,b)=>a.touched-b.touched);
   const sizes=new Map<string,number>();let total=0;
   for(const e of entries){const info=await stat(e.file).catch(()=>null);if(!info){this.entries.delete(e.episodeId);continue}sizes.set(e.episodeId,info.size);total+=info.size}
   for(const e of entries){
-   // Five pinned files are bounded to 750 MiB; the current foreground is also protected.
-   if(this.window.includes(e.episodeId)||this.active?.id===e.episodeId||!sizes.has(e.episodeId))continue;
-   if(total>CACHE_LIMIT||Date.now()-e.touched>86400000){
+   // Keep every episode of the opened work, including earlier episodes after a jump.
+   if(this.protectedIds.has(e.episodeId)||this.active?.id===e.episodeId||!sizes.has(e.episodeId))continue;
+   if(reclaim||total>CACHE_LIMIT||Date.now()-e.touched>86400000){
     try{await unlink(e.file);await unlink(path.join(this.directory,e.key+'.json')).catch(()=>{});this.entries.delete(e.episodeId);total-=sizes.get(e.episodeId)!}catch{/* Windows may still have an old file open; retry on the next trim. */}
    }
   }

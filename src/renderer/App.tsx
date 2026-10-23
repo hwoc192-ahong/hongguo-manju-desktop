@@ -1,7 +1,7 @@
 import {readPlaybackRate,savePlaybackRate,PLAYBACK_RATES} from './player-preferences';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
-import type { Board, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
+import type { Board, BufferState, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
 import { formatTime, resumeTime, selectEpisode } from './playback-state';
 import {UpdateControl} from './UpdateControl';
 import {PlayerSurface} from './PlayerSurface';
@@ -227,6 +227,10 @@ function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favori
   const [autoNext, setAutoNext] = useState(true);
   const [sortDescending, setSortDescending] = useState(false);
   const [reload, setReload] = useState(0);
+  const [buffer, setBuffer] = useState<BufferState | null>(null);
+  const [bufferError, setBufferError] = useState('');
+  const [bufferRetry, setBufferRetry] = useState(0);
+  const appliedBufferRetry = useRef(0);
   const resume = useRef(library.history.find(item => item.seriesId === id));
   useEffect(() => {
     let live = true; setLoading(true); setError('');
@@ -240,8 +244,22 @@ function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favori
   const index = series?.episodes.findIndex(item => item.id === episode?.id) ?? -1;
   useEffect(() => {
     if (!series || index < 0) return;
-    void call(() => window.desktop.bufferEpisodes(series.episodes.slice(index, index + 5).map(item => item.id))).catch(() => {});
-  }, [series, index]);
+    let live = true; let timer: number | undefined;
+    setBuffer(null); setBufferError('');
+    const refresh = async () => {
+      try { const value = await call(() => window.desktop.bufferState()); if (live) { setBuffer(value); setBufferError(''); } }
+      catch (error) { if (live) setBufferError(errorMessage(error)); }
+    };
+    // Prepare the current episode and all later episodes, then fill earlier gaps.
+    const ordered = [...series.episodes.slice(index), ...series.episodes.slice(0, index)].map(item => item.id);
+    void (async () => {
+      await call(() => window.desktop.bufferEpisodes(ordered));
+      if (bufferRetry !== appliedBufferRetry.current) { appliedBufferRetry.current = bufferRetry; await call(() => window.desktop.retryBuffer()); }
+      if (!live) return; await refresh();
+      if (live) timer = window.setInterval(() => { void refresh(); }, 1000);
+    })().catch(error => { if (live) setBufferError(errorMessage(error)); });
+    return () => { live = false; window.clearInterval(timer); };
+  }, [series, index, bufferRetry]);
   useEffect(() => () => { void call(() => window.desktop.bufferEpisodes([])).catch(() => {}); }, []);
   const favorite = library.favorites.some(item => item.id === id);
   const episodes = sortDescending ? [...(series?.episodes || [])].reverse() : series?.episodes || [];
@@ -252,6 +270,13 @@ function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favori
       <div className="watch-layout"><section className="watch-main">
         {episode ? <PlayerSurface episodeId={episode.id}><Player rate={rate} onRateChange={onRateChange} key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /></PlayerSurface> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
         <div className="now-playing"><div><span className="playing-dot" /><strong>{episode ? `第${episode.order}集` : '剧集待更新'}</strong><span>{episode?.title && episode.title !== `第${episode.order}集` ? episode.title : series.title}</span></div><label className="toggle-label"><input type="checkbox" checked={autoNext} onChange={event => setAutoNext(event.target.checked)} /><span className="toggle-track" />自动连播</label></div>
+        {episode && <div className="series-buffer" role="status" aria-live="off">
+          <div><strong>整剧缓存</strong><span>{buffer ? `已缓存 ${buffer.ready}/${buffer.total} 集` : '正在读取缓存状态…'}</span>
+            <span>{bufferError || (buffer?.status === 'complete' ? '全剧已缓存' : buffer?.status === 'paused' || buffer?.status === 'partial' ? buffer.message : buffer?.activeId ? `正在准备第 ${series.episodes.find(item => item.id === buffer.activeId)?.order || ''} 集` : '当前集就绪后继续缓存全剧')}</span>
+            {!!buffer?.failed && buffer.status !== 'partial' && <span>{buffer.failed} 集准备失败</span>}
+          </div>
+          {(bufferError || buffer?.status === 'paused' || !!buffer?.failed) && <button className="secondary-button" onClick={() => setBufferRetry(value => value + 1)}>重试缓存</button>}
+        </div>}
         <section className="story-info"><Cover work={series} /><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category => <span key={category}>{category}</span>)}</div><p>{series.description || '暂无作品简介。'}</p></div></section>
       </section><aside className="episode-panel"><div className="episode-heading"><div><h2>选集</h2><span>{series.episodes.length}集可播放</span></div><button onClick={() => setSortDescending(value => !value)}>{sortDescending ? '倒序 ↓' : '正序 ↑'}</button></div><div className="episode-grid">{episodes.map(item => <button key={item.id} className={item.id === episode?.id ? 'current' : ''} onClick={() => setEpisode(item)} title={item.title || `第${item.order}集`} aria-label={`播放第${item.order}集`} aria-current={item.id === episode?.id ? 'true' : undefined}>{item.id === episode?.id && <span className="equalizer"><i /><i /><i /></span>}{item.order}</button>)}</div></aside></div>
     </>}

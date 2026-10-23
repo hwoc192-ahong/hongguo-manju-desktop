@@ -6,6 +6,10 @@ export interface Catalog { items: Work[]; hasMore: boolean; nextOffset: number; 
 export interface Progress { seriesId: string; episodeId: string; order: number; time: number; duration: number; updatedAt: number; work: Work }
 export interface Library { favorites: Work[]; history: Progress[] }
 export interface Playback { url: string; duration: number; definition: string; episodeId: string }
+export interface BufferState {
+ status:'idle'|'preparing'|'complete'|'partial'|'paused';
+ total:number; ready:number; failed:number; activeId?:string; message:string;
+}
 export interface Result<T> { ok: boolean; data?: T; error?: { code: string; message: string } }
 export interface UpdateState {
  status: 'idle'|'checking'|'current'|'available'|'downloading'|'downloaded'|'installing'|'error'|'unsupported';
@@ -22,7 +26,9 @@ export interface DesktopApi {
  importShare(text: string): Promise<Result<Series>>;
  series(id: string): Promise<Result<Series>>;
  playback(id: string, force?: boolean): Promise<Result<Playback>>;
-  bufferEpisodes(ids: string[]): Promise<Result<void>>;
+ bufferEpisodes(ids: string[]): Promise<Result<BufferState>>;
+ bufferState(): Promise<Result<BufferState>>;
+ retryBuffer(): Promise<Result<BufferState>>;
  library(): Promise<Result<Library>>;
  favorite(work: Work, enabled: boolean): Promise<Result<Library>>;
  progress(progress: Omit<Progress,'updatedAt'>): Promise<Result<Library>>;

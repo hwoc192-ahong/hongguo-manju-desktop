@@ -11,6 +11,7 @@ test('下载完成后开始退出不能再启动 FFmpeg，关闭等待中的准�
  let cache:import('../src/main/media').MediaCache;
  let closing:Promise<void>|undefined;
  const patches=[
+  t.mock.method(fs,'statfs',async()=>({bavail:10*1024**3,bsize:1})),
   t.mock.method(fs,'open',async()=>({write:async()=>{},close:async()=>{closing=cache.close()}})),
   t.mock.method(fs,'rename',async()=>{}),
   t.mock.method(fs,'writeFile',async()=>{}),

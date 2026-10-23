@@ -18,7 +18,7 @@ let library={favorites:[],history:[]};
 const ok=data=>Promise.resolve({ok:true,data});
 const update={status:'current',currentVersion:${JSON.stringify(version)},message:'当前已是最新版本。'};
 contextBridge.exposeInMainWorld('desktop',{
- bufferEpisodes:()=>ok(undefined),
+ bufferEpisodes:()=>ok({status:'complete',total:3,ready:3,failed:0,message:'全剧已缓存'}),bufferState:()=>ok({status:'complete',total:3,ready:3,failed:0,message:'全剧已缓存'}),retryBuffer:()=>ok({status:'complete',total:3,ready:3,failed:0,message:'全剧已缓存'}),
  catalog:()=>ok({items:[work],hasMore:false,nextOffset:1,label:'推荐榜',source:'fixture'}),search:()=>ok({items:[work]}),
  series:()=>ok({...work,episodes}),library:()=>ok(library),favorite:()=>ok(library),
  progress:value=>{library={...library,history:[{...value,updatedAt:Date.now()}]};return ok(library);},

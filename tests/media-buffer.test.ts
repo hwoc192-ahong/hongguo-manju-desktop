@@ -12,9 +12,10 @@ const ids=Array.from({length:12},(_,i)=>String(7695386527160863700n+BigInt(i)));
 const tick=()=>new Promise(resolve=>setTimeout(resolve,10));
 async function until(check:()=>boolean){for(let i=0;i<300;i++){if(check())return;await tick()}assert.fail('timed out waiting for buffer');}
 
-async function fixture(t:any,options:{hold?:string;large?:boolean;fail?:string;holdEncode?:number}={}){
+async function fixture(t:any,options:{hold?:string;large?:boolean;fail?:string;holdEncode?:number;freeBytes?:()=>Promise<number>}={}){
  const dir=await mkdtemp(path.join(tmpdir(),'manju-buffer-'));
  const fetched:string[]=[],aborted:string[]=[],encoded:string[]=[],killed:string[]=[];
+ let failure=options.fail;
  let active=0,maxActive=0,release:(()=>void)|undefined;
  const spawnMock=t.mock.method(childProcess,'spawn',(_exe:string,args:readonly string[])=>{
   const child=Object.assign(new EventEmitter(),{stdout:new PassThrough(),stderr:new PassThrough(),kill:()=>{killed.push(id);queueMicrotask(()=>child.emit('close',null));return true}});
@@ -33,14 +34,14 @@ async function fixture(t:any,options:{hold?:string;large?:boolean;fail?:string;h
    if(id===options.hold)await new Promise<void>((resolve,reject)=>{
     release=resolve;init?.signal?.addEventListener('abort',()=>{aborted.push(id);reject(init.signal?.reason)},{once:true});
    });
-   if(id===options.fail)throw Error('offline');
+   if(id===failure)throw Error('offline');
    return new Response(Buffer.from('source'));
   }finally{active--}
  });syncBuiltinESMExports();
  const {MediaCache}=await import('../src/main/media');
- const media=new MediaCache(dir,'fake-ffmpeg',async id=>({episodeId:id,duration:1,definition:'540p',codec:'h264',encrypted:false,url:`https://example.com/${id}`,size:6}));await media.init();
+ const media=new MediaCache(dir,'fake-ffmpeg',async id=>({episodeId:id,duration:1,definition:'540p',codec:'h264',encrypted:false,url:`https://example.com/${id}`,size:6}),{freeBytes:options.freeBytes});await media.init();
  t.after(async()=>{await media.close();spawnMock.mock.restore();fetchMock.mock.restore();syncBuiltinESMExports();await rm(dir,{recursive:true,force:true})});
- return {media,dir,fetched,aborted,encoded,killed,get maxActive(){return maxActive},release:()=>release?.()};
+ return {media,dir,fetched,aborted,encoded,killed,get maxActive(){return maxActive},release:()=>release?.(),recover:()=>{failure=undefined}};
 }
 
 test('当前集完成后顺序缓冲至第五集，第二集复用缓存并补第六集',async t=>{
@@ -83,9 +84,58 @@ test('五集窗口不被磁盘淘汰，旧缓存清理使完整缓存不超过 1
  for(const id of ids.slice(0,5))assert.ok(retained.includes(id),`window episode ${id} must be retained`);
 });
 
-test('只接受最多五个有效且不重复的编号',async t=>{
+test('只接受有界的有效且不重复的剧集编号列表',async t=>{
  const f=await fixture(t);
- for(const value of [ids.slice(0,6),['bad'],[ids[0],ids[0]],null])assert.throws(()=>f.media.setBufferWindow(value as any),{code:'INVALID_INPUT'});
+ const tooMany=Array.from({length:5001},(_,i)=>String(7695386527160863700n+BigInt(i)));
+ for(const value of [tooMany,['bad'],[ids[0],ids[0]],null])assert.throws(()=>f.media.setBufferWindow(value as any),{code:'INVALID_INPUT'});
+});
+
+test('打开首集后后台准备整部剧，超过五集也不中止，状态只有完整缓存才计数',async t=>{
+ const f=await fixture(t,{hold:ids[8]});f.media.setBufferWindow(ids);
+ assert.equal(f.media.bufferState().ready,0);await f.media.prepare(ids[0]);await until(()=>f.fetched.includes(ids[8]));
+ assert.equal(f.media.bufferState().ready,8);assert.equal(f.media.bufferState().total,12);assert.equal(f.media.bufferState().activeId,ids[8]);
+ f.release();await until(()=>f.encoded.length===12);await f.media.prepare(ids[11]);
+ assert.deepEqual(f.fetched,ids);assert.equal(f.media.bufferState().status,'complete');assert.equal(f.media.bufferState().ready,12);assert.equal(f.maxActive,1);
+});
+
+test('从中间集打开时优先向后缓存，再补齐前面的集数，切换到已缓存集不重复下载',async t=>{
+ const f=await fixture(t);const order=[...ids.slice(7),...ids.slice(0,7)];f.media.setBufferWindow(order);await f.media.prepare(ids[7]);
+ await until(()=>f.encoded.length===12);await f.media.prepare(ids[6]);
+ assert.deepEqual(f.fetched,order);f.media.setBufferWindow(ids);await f.media.prepare(ids[0]);await tick();assert.equal(f.fetched.length,12);
+});
+
+test('整剧缓存超过 1 GiB 仍全部保留，离页及重开不删除已完成的整剧',async t=>{
+ const f=await fixture(t,{large:true});const full=ids.slice(0,9);f.media.setBufferWindow(full);const first=await f.media.prepare(ids[0]);
+ await until(()=>f.encoded.length===9);await f.media.prepare(ids[8]);f.media.setBufferWindow([]);await f.media.close();
+ assert.equal((await f.media.response(first.url,'bytes=0-0')).status,206);
+ const {MediaCache}=await import('../src/main/media');
+ const reopened=new MediaCache(f.dir,'fake-ffmpeg',async()=>{throw Error('must reuse full-series cache')});
+ try{await reopened.init();reopened.setBufferWindow(full);assert.equal(reopened.bufferState().ready,9);for(const id of full)await reopened.prepare(id)}finally{await reopened.close()}
+ assert.equal(f.fetched.length,9);
+});
+
+test('空间不足暂停后台而非逐集失败重试，现有缓存可播放，清理空间后手动恢复',async t=>{
+ let free=3*1024**3;const f=await fixture(t,{freeBytes:async()=>free});
+ // The current file completes; the next background task must see low space.
+ f.media.setBufferWindow(ids);await f.media.prepare(ids[0]);free=0;
+ await until(()=>f.media.bufferState().status==='paused');const count=f.fetched.length;await tick();assert.equal(f.fetched.length,count);
+ assert.ok(f.media.bufferState().message.includes('空间'));await f.media.prepare(ids[0]);
+ await assert.rejects(f.media.prepare(ids[10]),{code:'DISK_SPACE'});
+ free=3*1024**3;f.media.retryBuffer();await until(()=>f.encoded.length===12);await f.media.prepare(ids[11]);assert.equal(f.media.bufferState().status,'complete');
+});
+
+test('缓存失败不误报全剧完成，点击重试后继续只准备失败集',async t=>{
+ const f=await fixture(t,{fail:ids[5]});f.media.setBufferWindow(ids);await f.media.prepare(ids[0]);await until(()=>f.encoded.length===11);await f.media.prepare(ids[11]);
+ assert.equal(f.media.bufferState().status,'partial');assert.equal(f.media.bufferState().failed,1);assert.equal(f.media.bufferState().ready,11);
+ const count=f.fetched.length;f.recover();f.media.retryBuffer();await until(()=>f.media.bufferState().status==='complete');
+ assert.equal(f.fetched.length,count+1);assert.equal(f.fetched.at(-1),ids[5]);
+});
+
+test('整剧准备期间跳到未缓存的当前集，抢占后台任务后继续补齐全剧',async t=>{
+ const f=await fixture(t,{hold:ids[1]});f.media.setBufferWindow(ids);await f.media.prepare(ids[0]);await until(()=>f.fetched.includes(ids[1]));
+ f.media.setBufferWindow([...ids.slice(7),...ids.slice(0,7)]);await f.media.prepare(ids[7]);
+ assert.deepEqual(f.aborted,[ids[1]]);assert.deepEqual(f.fetched.slice(0,3),[ids[0],ids[1],ids[7]]);
+ f.media.setBufferWindow([]);await tick();assert.equal(f.media.bufferState().status,'idle');
 });
 
 test('关闭应用取消后台任务且不重试、不启动后续集',async t=>{
