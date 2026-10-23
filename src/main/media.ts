@@ -22,7 +22,9 @@ export function decodeContentKey(encoded:string):Buffer{
  const prefix=String.fromCharCode(decoded[0]);if(!/^[0-9a-f]$/.test(prefix))throw new AppError('UNSUPPORTED_RESOURCE','视频密钥格式暂不支持');
  const key=decoded.subarray(1,count-Number.parseInt(prefix,16)).toString('ascii');if(!/^[0-9a-f]{32}$/.test(key))throw new AppError('UNSUPPORTED_RESOURCE','视频密钥格式暂不支持');return Buffer.from(key,'hex');
 }
-interface CacheEntry { key:string; file:string; episodeId:string; duration:number; definition:string; touched:number }
+interface CacheEntry { key:string; file:string; episodeId:string; duration:number; definition:string; touched:number; policy:string }
+// Older caches used lower-resolution-first selection and stronger compression.
+const CACHE_POLICY='highest-resolution-crf20-v1';
 interface MediaJob {
  id:string; force:boolean; foreground:boolean; controller:AbortController;
  promise:Promise<Playback>; resolve:(value:Playback)=>void; reject:(error:unknown)=>void;
@@ -49,7 +51,7 @@ export class MediaCache {
  private closing=false;
  constructor(private directory:string,private ffmpeg:string,private getResource:(id:string)=>Promise<Resource>){}
  async init(){await mkdir(this.directory,{recursive:true});for(const name of await readdir(this.directory)){
-  if(/^[a-f0-9]{32}\.json$/.test(name)){try{const e=JSON.parse(await readFile(path.join(this.directory,name),'utf8'));if(validId(e.episodeId)&&Number.isFinite(e.duration)&&e.duration>0&&typeof e.definition==='string'&&e.key===name.slice(0,32)){e.file=path.join(this.directory,e.key+'.mp4');const info=await stat(e.file);if(info.size>0&&info.size<=FILE_LIMIT)this.entries.set(e.episodeId,e)}}catch{}}
+  if(/^[a-f0-9]{32}\.json$/.test(name)){try{const e=JSON.parse(await readFile(path.join(this.directory,name),'utf8'));if(e.policy===CACHE_POLICY&&validId(e.episodeId)&&Number.isFinite(e.duration)&&e.duration>0&&typeof e.definition==='string'&&e.key===name.slice(0,32)){e.file=path.join(this.directory,e.key+'.mp4');const info=await stat(e.file);if(info.size>0&&info.size<=FILE_LIMIT)this.entries.set(e.episodeId,e)}}catch{}}
   if(/^[a-f0-9]{32}\.(?:input|working)\.mp4$/.test(name))await unlink(path.join(this.directory,name)).catch(()=>{});
  }
   const liveKeys=new Set([...this.entries.values()].map(e=>e.key));for(const name of await readdir(this.directory)){if(/^[a-f0-9]{32}\.(?:mp4|json)$/.test(name)&&!liveKeys.has(name.split('.')[0]))await unlink(path.join(this.directory,name)).catch(()=>{})}
@@ -129,7 +131,7 @@ export class MediaCache {
    await this.transcode(input,working,contentKey,resource.duration,signal);contentKey?.fill(0);check(signal);
    const info=await stat(working);if(info.size<=0||info.size>FILE_LIMIT)throw new AppError('MEDIA_CACHE','单集缓存超过大小限制');
    await rename(working,output);check(signal);
-   const entry:CacheEntry={key,file:output,episodeId:resource.episodeId,duration:resource.duration,definition:resource.definition,touched:Date.now()};
+   const entry:CacheEntry={key,file:output,episodeId:resource.episodeId,duration:resource.duration,definition:resource.definition,touched:Date.now(),policy:CACHE_POLICY};
    await writeFile(metadata,JSON.stringify({...entry,file:undefined}));check(signal);
    const previous=this.entries.get(resource.episodeId);this.entries.set(resource.episodeId,entry);committed=true;
    if(previous){await unlink(path.join(this.directory,previous.key+'.json')).catch(()=>{});await unlink(previous.file).catch(()=>{})}
@@ -140,7 +142,7 @@ export class MediaCache {
  private transcode(input:string,output:string,key:Buffer|null,duration:number,signal:AbortSignal):Promise<void>{
   check(signal);
   return new Promise((resolve,reject)=>{
-   const args=['-hide_banner','-loglevel','error','-nostats','-progress','pipe:1',...(key?['-decryption_key',key.toString('hex')]:[]),'-i',input,'-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2','-c:v','libx264','-preset','veryfast','-threads','2','-crf','25','-c:a','aac','-movflags','+faststart','-y',output];
+   const args=['-hide_banner','-loglevel','error','-nostats','-progress','pipe:1',...(key?['-decryption_key',key.toString('hex')]:[]),'-i',input,'-vf','scale=trunc(iw/2)*2:trunc(ih/2)*2','-c:v','libx264','-preset','veryfast','-threads','2','-crf','20','-c:a','aac','-movflags','+faststart','-y',output];
    const child=spawn(this.ffmpeg,args,{windowsHide:true,stdio:['ignore','pipe','pipe']});let progress='';
    const abort=()=>{child.kill()};signal.addEventListener('abort',abort,{once:true});
    const timeout=setTimeout(()=>child.kill(),180000);

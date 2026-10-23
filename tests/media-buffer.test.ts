@@ -110,3 +110,16 @@ test('重开后复用已完成的五集缓存，不重新请求视频资源',asy
   assert.equal(f.fetched.length,5);
  }finally{await reopened.close()}
 });
+
+test('旧画质策略产生的缓存即使标注 1080p 也不复用，新缓存可以重开复用',async t=>{
+ const f=await fixture(t);const oldKey='a'.repeat(32);
+ await writeFile(path.join(f.dir,oldKey+'.mp4'),'old-low-quality');
+ await writeFile(path.join(f.dir,oldKey+'.json'),JSON.stringify({key:oldKey,episodeId:ids[0],duration:1,definition:'1080p',touched:Date.now()}));
+ await f.media.close();
+ const {MediaCache}=await import('../src/main/media');let lookups=0;
+ const updated=new MediaCache(f.dir,'fake-ffmpeg',async id=>{lookups++;return {episodeId:id,duration:1,definition:'1080p',codec:'h264',encrypted:false,url:`https://example.com/${id}`,size:6}});
+ try{
+  await updated.init();const playback=await updated.prepare(ids[0]);assert.equal(lookups,1);assert.notEqual(playback.url,`manju-media://local/${oldKey}`);
+  assert.ok(!(await readdir(f.dir)).includes(oldKey+'.mp4'));
+ }finally{await updated.close()}
+});

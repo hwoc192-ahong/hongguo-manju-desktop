@@ -65,7 +65,7 @@ test('catalog never labels a mismatched selected board as the requested board', 
   await assert.rejects(make(transport(() => result)).catalog('hot'), errorCode('BOARD_MISMATCH'));
 });
 
-test('resources handle model/track variants, prefer 540p and keep credentials internal', async () => {
+test('resources handle model/track variants, prefer highest supported resolution and keep credentials internal', async () => {
   const encoded = Buffer.from('https://v.example/video.mp4?token=secret').toString('base64');
   const track = { main_url: encoded, codec_type: 'bytevc1', encrypt: true, encryption_method: 'cenc-aes-ctr', spade_a: 'SECRET_KEY', kid: 'SECRET_KID', size: 1234, definition: '720p' };
   const balanced = { ...track, definition: '540p' };
@@ -78,7 +78,7 @@ test('resources handle model/track variants, prefer 540p and keep credentials in
         return { code: 0, data: { video_model: stringify ? JSON.stringify(model) : model } };
       }));
       const resource = await provider.getResource(VID);
-      assert.equal(resource.definition, '540p'); assert.equal(resource.spade, 'SECRET_KEY');
+      assert.equal(resource.definition, '1080p'); assert.equal(resource.spade, 'SECRET_KEY');
       assert.equal(resource.url, 'https://v.example/video.mp4?token=secret'); assert.equal(resource.size, 1234);
     }
   }
@@ -99,6 +99,24 @@ test('an unsupported low-resolution codec cannot hide a compatible full-length t
     const resource=await provider.getResource(VID);
     assert.equal(resource.codec,'bytevc1');assert.equal(resource.definition,'1080p');assert.equal(resource.duration,60.303);
   }
+});
+
+test('quality preference is stable across episode track order and falls back to the best available resolution',async()=>{
+ const base={main_url:'https://v.example/video',encrypt:false,size:1234,codec_type:'h264'};
+ for(const [definitions,expected] of [
+  [['360p','1080p','540p','720p'],'1080p'],
+  [['540p','720p','480p'],'720p'],
+  [['360p','480p'],'480p'],
+  [['unknown','720p'],'720p'],
+ ] as const){
+  for(const order of [[...definitions],[...definitions].reverse()]){
+   const tracks=order.map(definition=>({...base,definition}));
+   const provider=make(transport(()=>({code:0,data:{video_model:{video_duration:60,video_list:tracks}}})));
+   assert.equal((await provider.getResource(VID)).definition,expected);
+  }
+ }
+ const tracks=[{...base,definition:'1080p',codec_type:'bytevc2'},{...base,definition:'720p'}];
+ assert.equal((await make(transport(()=>({code:0,data:{video_model:{video_duration:60,video_list:tracks}}}))).getResource(VID)).definition,'720p');
 });
 
 test('a resource with only unsupported codecs fails before download with an explicit error',async()=>{

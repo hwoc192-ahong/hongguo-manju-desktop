@@ -1,3 +1,4 @@
+import {readPlaybackRate,savePlaybackRate,PLAYBACK_RATES} from './player-preferences';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Board, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
@@ -90,6 +91,8 @@ export default function App() {
   const [libraryError, setLibraryError] = useState('');
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [rate, setRate] = useState(readPlaybackRate);
+  const changeRate = (value: number) => { setRate(value); if (!savePlaybackRate(value)) notify('倍速已应用，但未能保存，重开软件后可能需要重新设置。'); };
   const [importOpen, setImportOpen] = useState(false);
   const [shareText, setShareText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -192,7 +195,7 @@ export default function App() {
         <UpdateControl/>
       </header>
       <main className="content-scroll" ref={scrollArea}>
-        {activeId ? <Detail key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : <div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
+        {activeId ? <Detail rate={rate} onRateChange={changeRate} key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : <div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
           {view !== 'discover' && <div className="page-heading"><div><h1>{heading}</h1><p>{subheading}</p></div>{view === 'search' && <button className="refresh-button" onClick={() => void loadCatalog()} disabled={loading}><Icon name="refresh" size={17} />刷新</button>}</div>}
           {spotlight && <section className="spotlight" aria-label="作品推荐">
             <Cover work={spotlight} className="spotlight-art" />
@@ -216,7 +219,7 @@ export default function App() {
   </div>;
 }
 
-function Detail({ id, library, onLibrary, onFavorite, favoriteBusy, onBack, notify }: { id: string; library: Library; onLibrary: (library: Library) => void; onFavorite: (work: Work) => void; favoriteBusy: boolean; onBack: () => void; notify: (message: string) => void }) {
+function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favoriteBusy, onBack, notify }: { rate: number; onRateChange: (rate: number) => void; id: string; library: Library; onLibrary: (library: Library) => void; onFavorite: (work: Work) => void; favoriteBusy: boolean; onBack: () => void; notify: (message: string) => void }) {
   const [series, setSeries] = useState<Series | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -247,7 +250,7 @@ function Detail({ id, library, onLibrary, onFavorite, favoriteBusy, onBack, noti
     {loading ? <div className="center-loading"><span className="spinner" /><p>正在打开这个故事…</p></div> : error ? <ErrorState message={error} onRetry={() => setReload(value => value + 1)} /> : series && <>
       <div className="detail-heading"><div><span className="eyebrow">NOW SHOWING</span><h1>{series.title}</h1><p>{series.categories?.join(' · ')}{series.categories?.length ? ' · ' : ''}{series.total ? `全${series.total}集` : `${series.episodes.length}集`}</p></div><button className={`favorite-button ${favorite ? 'is-favorite' : ''}`} disabled={favoriteBusy} onClick={() => onFavorite(series)}><Icon name="heart" size={18} />{favorite ? '已收藏' : '收藏漫剧'}</button></div>
       <div className="watch-layout"><section className="watch-main">
-        {episode ? <PlayerSurface episodeId={episode.id}><Player key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /></PlayerSurface> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
+        {episode ? <PlayerSurface episodeId={episode.id}><Player rate={rate} onRateChange={onRateChange} key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /></PlayerSurface> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
         <div className="now-playing"><div><span className="playing-dot" /><strong>{episode ? `第${episode.order}集` : '剧集待更新'}</strong><span>{episode?.title && episode.title !== `第${episode.order}集` ? episode.title : series.title}</span></div><label className="toggle-label"><input type="checkbox" checked={autoNext} onChange={event => setAutoNext(event.target.checked)} /><span className="toggle-track" />自动连播</label></div>
         <section className="story-info"><Cover work={series} /><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category => <span key={category}>{category}</span>)}</div><p>{series.description || '暂无作品简介。'}</p></div></section>
       </section><aside className="episode-panel"><div className="episode-heading"><div><h2>选集</h2><span>{series.episodes.length}集可播放</span></div><button onClick={() => setSortDescending(value => !value)}>{sortDescending ? '倒序 ↓' : '正序 ↑'}</button></div><div className="episode-grid">{episodes.map(item => <button key={item.id} className={item.id === episode?.id ? 'current' : ''} onClick={() => setEpisode(item)} title={item.title || `第${item.order}集`} aria-label={`播放第${item.order}集`} aria-current={item.id === episode?.id ? 'true' : undefined}>{item.id === episode?.id && <span className="equalizer"><i /><i /><i /></span>}{item.order}</button>)}</div></aside></div>
@@ -255,7 +258,7 @@ function Detail({ id, library, onLibrary, onFavorite, favoriteBusy, onBack, noti
   </div>;
 }
 
-function Player({ series, episode, initialTime, onLibrary, onPrevious, onNext, autoNext, onEnded, notify }: { series: Series; episode: Episode; initialTime: number; onLibrary: (library: Library) => void; onPrevious?: () => void; onNext?: () => void; autoNext: boolean; onEnded: () => void; notify: (message: string) => void }) {
+function Player({ rate, onRateChange, series, episode, initialTime, onLibrary, onPrevious, onNext, autoNext, onEnded, notify }: { rate: number; onRateChange: (rate: number) => void; series: Series; episode: Episode; initialTime: number; onLibrary: (library: Library) => void; onPrevious?: () => void; onNext?: () => void; autoNext: boolean; onEnded: () => void; notify: (message: string) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [resource, setResource] = useState<Playback | null>(null);
@@ -267,7 +270,6 @@ function Player({ series, episode, initialTime, onLibrary, onPrevious, onNext, a
   const [duration, setDuration] = useState(episode.duration || 0);
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
-  const [rate, setRate] = useState(1);
   const [attempt, setAttempt] = useState(0);
   const automaticRetry = useRef(false);
   const [elapsed, setElapsed] = useState(0);
@@ -352,7 +354,7 @@ function Player({ series, episode, initialTime, onLibrary, onPrevious, onNext, a
       {loading ? <div className="player-overlay"><span className="spinner" /><strong>{elapsed >= 5 ? '正在准备播放资源…' : '正在获取这一集…'}</strong><p>{elapsed >= 5 ? '正在准备完整单集，所需时间取决于网络和视频长度。' : `第${episode.order}集即将开始`}</p></div> : error ? <div className="player-overlay player-error" role="alert"><div className="state-icon"><Icon name="film" size={30} /></div><strong>播放遇到了一点问题</strong><p>{error}</p><button className="primary-button" onClick={retry}><Icon name="refresh" size={17} />重试当前集</button></div> : waiting ? <div className="buffering"><span className="spinner" /><span>正在缓冲…</span></div> : !playing && resource && <button className="big-play" onClick={() => void togglePlay()} aria-label="播放"><Icon name="play" size={33} /></button>}
     </div>
     <div className="player-controls"><input className="seek-range" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(time, duration || 1)} style={trackStyle(time, duration)} disabled={!resource || !!error || loading} onChange={event => seek(Number(event.target.value))} onPointerUp={() => void save()} onKeyUp={() => void save()} aria-label="播放进度" aria-valuetext={`${formatTime(time)} / ${formatTime(duration)}`} />
-      <div className="control-row"><button className="control-button" onClick={() => void togglePlay()} disabled={!resource || !!error} aria-label={playing ? '暂停' : '播放'} title={playing ? '暂停（空格）' : '播放（空格）'}><Icon name={playing ? 'pause' : 'play'} size={19} /></button><button className="control-button" disabled={!onPrevious} onClick={() => move(onPrevious)} aria-label="上一集" title="上一集"><Icon name="previous" size={18} /></button><button className="control-button" disabled={!onNext} onClick={() => move(onNext)} aria-label="下一集" title="下一集"><Icon name="next" size={18} /></button><span className="time-label">{formatTime(time)}<i>/</i>{formatTime(duration)}</span><span className="controls-spacer" /><span className="definition-label">{resource?.definition || ''}</span><div className="volume-controls"><button className="control-button" onClick={() => setMuted(value => !value)} aria-label={muted || !volume ? '取消静音' : '静音'} title="静音（M）"><Icon name={muted || !volume ? 'muted' : 'volume'} size={18} /></button><input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} style={trackStyle(muted ? 0 : volume, 1)} onChange={event => { setVolume(Number(event.target.value)); setMuted(false); }} aria-label="音量" /></div><select className="speed-select" value={rate} onChange={event => setRate(Number(event.target.value))} aria-label="播放倍速" title="播放倍速">{[0.5, 0.75, 1, 1.25, 1.5, 2].map(value => <option key={value} value={value}>{value === 1 ? '倍速 1×' : `${value}×`}</option>)}</select><button className="control-button" onClick={toggleFullscreen} aria-label="切换全屏" title="全屏（F）"><Icon name="fullscreen" size={18} /></button></div>
+      <div className="control-row"><button className="control-button" onClick={() => void togglePlay()} disabled={!resource || !!error} aria-label={playing ? '暂停' : '播放'} title={playing ? '暂停（空格）' : '播放（空格）'}><Icon name={playing ? 'pause' : 'play'} size={19} /></button><button className="control-button" disabled={!onPrevious} onClick={() => move(onPrevious)} aria-label="上一集" title="上一集"><Icon name="previous" size={18} /></button><button className="control-button" disabled={!onNext} onClick={() => move(onNext)} aria-label="下一集" title="下一集"><Icon name="next" size={18} /></button><span className="time-label">{formatTime(time)}<i>/</i>{formatTime(duration)}</span><span className="controls-spacer" /><span className="definition-label" title="优先使用来源提供的最高可播放清晰度">{resource?.definition || ''}</span><div className="volume-controls"><button className="control-button" onClick={() => setMuted(value => !value)} aria-label={muted || !volume ? '取消静音' : '静音'} title="静音（M）"><Icon name={muted || !volume ? 'muted' : 'volume'} size={18} /></button><input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} style={trackStyle(muted ? 0 : volume, 1)} onChange={event => { setVolume(Number(event.target.value)); setMuted(false); }} aria-label="音量" /></div><select className="speed-select" value={rate} onChange={event => onRateChange(Number(event.target.value))} aria-label="播放倍速" title="播放倍速">{PLAYBACK_RATES.map(value => <option key={value} value={value}>{value === 1 ? '倍速 1×' : `${value}×`}</option>)}</select><button className="control-button" onClick={toggleFullscreen} aria-label="切换全屏" title="全屏（F）"><Icon name="fullscreen" size={18} /></button></div>
     </div>
   </div>;
 }

@@ -11,7 +11,7 @@ const BOARDS = {
 } satisfies Record<Board, { id: string; label: string }>;
 const SHARE_HOSTS = new Set(['kylin.hainanyuyue.com', 'hainanyuyue.com']);
 const WEB_ORIGIN = 'https://hongguoduanju.com';
-const QUALITY_ORDER = ['540p', '720p', '480p', '360p', '1080p'];
+const QUALITY_ORDER = ['1080p', '720p', '540p', '480p', '360p'];
 const SUPPORTED_CODECS = new Set(['bytevc1', 'h264', 'h265', 'avc1', 'hvc1', 'hevc', 'h265_hvc1', 'av1']);
 
 export class ProviderError extends Error {
