@@ -10,7 +10,7 @@ import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Board, BufferState, CacheOverview, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
 import { formatTime, resumeTime, selectEpisode } from './playback-state';
 import {UpdateControl} from './UpdateControl';
-import {PlayerSurface} from './PlayerSurface';
+import {PlayerSurface,useFrameHandoff} from './PlayerSurface';
 import {CacheProgress,cacheProgressText} from './CacheProgress';
 import {CacheCenter} from './CacheCenter';
 import {Recommendations} from './Recommendations';
@@ -315,7 +315,7 @@ function Detail({ session,startFirst,onOpen, rate, onRateChange, id, library, on
  <div className="watch-layout"><section className="watch-main">
  {series&&episode&&<><div className="background-cache-entry"><span>下一季会在确认后自动加入缓存</span><button className="secondary-button" onClick={()=>void call(()=>window.desktop.cacheAdd(series.id)).then(()=>notify('已加入后台缓存')).catch(error=>notify(errorMessage(error)))}>缓存当前整季</button></div><CacheProgress state={buffer} episodes={series.episodes} error={bufferError} onRetry={()=>setBufferRetry(value=>value+1)}/></>}
  <PlayerSurface episodeId={episode?.id||id}>
- {loading?<div className="player transition-player"><div className="player-overlay"><span className="spinner"/><strong>正在打开下一段故事…</strong></div></div>:error?<div className="player transition-player"><ErrorState message={error} onRetry={()=>setReload(value=>value+1)}/></div>:series&&episode?<Player session={session} onManualStart={()=>{setEnded(false);setPendingEnd(false)}} endOverlay={endOverlay} buffer={buffer} bufferError={bufferError} rate={rate} onRateChange={onRateChange} key={`${series.id}:${episode.id}`} series={series} episode={episode} initialTime={startFirst?0:library.history.find(item=>item.seriesId===id&&item.episodeId===episode.id)?.time||0} onLibrary={onLibrary} onPrevious={index>0?()=>choose(series.episodes[index-1]):undefined} onNext={index<series.episodes.length-1?next:undefined} onEnded={finished} notify={notify}/>:<div className="unavailable-player"><h3>暂时没有可播放剧集</h3><button onClick={()=>setReload(value=>value+1)}>重新获取剧集</button></div>}
+ {loading?<PlayerTransition><div className="player-overlay"><span className="spinner"/><strong>正在打开下一段故事…</strong></div></PlayerTransition>:error?<PlayerTransition><div className="player-overlay player-error"><ErrorState message={error} onRetry={()=>setReload(value=>value+1)}/></div></PlayerTransition>:series&&episode?<Player session={session} onManualStart={()=>{setEnded(false);setPendingEnd(false)}} endOverlay={endOverlay} buffer={buffer} bufferError={bufferError} rate={rate} onRateChange={onRateChange} key={`${series.id}:${episode.id}`} series={series} episode={episode} initialTime={startFirst?0:library.history.find(item=>item.seriesId===id&&item.episodeId===episode.id)?.time||0} onLibrary={onLibrary} onPrevious={index>0?()=>choose(series.episodes[index-1]):undefined} onNext={index<series.episodes.length-1?next:undefined} onEnded={finished} notify={notify}/>:<div className="unavailable-player"><h3>暂时没有可播放剧集</h3><button onClick={()=>setReload(value=>value+1)}>重新获取剧集</button></div>}
  </PlayerSurface>
  <div className="now-playing"><strong>{episode?`第${episode.order}集`:'准备播放'}</strong><SleepControl session={session}/><label className="toggle-label"><input type="checkbox" checked={session.preferences.autoNext} onChange={event=>session.onPreferences({...session.preferences,autoNext:event.target.checked})}/><span className="toggle-track"/>自动连播</label></div>
  {series&&<section className="story-info"><Cover work={series}/><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category=><span key={category}>{category}</span>)}</div><p>{series.description||'暂无作品简介。'}</p></div></section>}
@@ -324,8 +324,15 @@ function Detail({ session,startFirst,onOpen, rate, onRateChange, id, library, on
  </div>;
 }
 
+function PlayerTransition({children}:{children:ReactNode}){
+ const video=useRef<HTMLVideoElement|null>(null);
+ const {stageRef}=useFrameHandoff(video);
+ return <div className="player transition-player"><div className="video-stage" ref={stageRef}>{children}</div></div>;
+}
+
 function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, episode, initialTime, onLibrary, onPrevious, onNext, onEnded, notify, buffer, bufferError }: {session:PlaybackSession;endOverlay:ReactNode;onManualStart:()=>void; rate: number; onRateChange: (rate: number) => void; series: Series; episode: Episode; initialTime: number; onLibrary: (library: Library) => void; onPrevious?: () => void; onNext?: () => void; onEnded: () => void; notify: (message: string) => void; buffer:BufferState|null;bufferError:string }) {
   const video = useRef<HTMLVideoElement>(null);
+  const {videoRef,stageRef}=useFrameHandoff(video);
   const container = useRef<HTMLDivElement>(null);
   const [resource, setResource] = useState<Playback | null>(null);
   const resourceRef=useRef(resource);resourceRef.current=resource;
@@ -454,8 +461,8 @@ function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, e
   }
   useEffect(() => { if (video.current) { video.current.volume = volume; video.current.muted = muted; video.current.playbackRate = rate; } }, [volume, muted, rate, resource]);
   return <div className="player" ref={container} tabIndex={0} onKeyDown={keyboard} aria-label={`第${episode.order}集播放器`}>
-    <div className="video-stage">
-      {resource && !error && <video ref={video} src={resource.url} playsInline preload="auto" onClick={() => void togglePlay()} onDoubleClick={toggleFullscreen}
+    <div className="video-stage" ref={stageRef}>
+      {resource && !error && <video ref={videoRef} src={resource.url} playsInline preload="auto" onClick={() => void togglePlay()} onDoubleClick={toggleFullscreen}
         onLoadedMetadata={() => {
           const element = video.current!; const total=playbackDuration(resource,element.duration,resource.duration,streamComplete.current);
           const restored = resumeTime(desiredTime.current, total);const defer=!!resource.progressive&&restored>0&&!isBuffered(element,restored);pendingResume.current=defer?restored:null;if(!defer)element.currentTime = restored; element.volume = volume; element.muted = muted; element.playbackRate = rate;

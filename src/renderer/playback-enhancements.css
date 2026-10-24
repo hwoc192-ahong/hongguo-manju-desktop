@@ -3,7 +3,7 @@
 .sleep-control select{max-width:190px;padding:6px 8px;border:1px solid #dcd5c8;border-radius:7px;background:#fbf8f0;color:#443a30;font:inherit}
 .quality-select{max-width:160px;background:#272622;color:#eee9dd;border:1px solid #57534a;border-radius:5px;padding:4px;font-size:11px}
 .player-inline-error{color:#ffd2bb;margin:3px 10px;font-size:12px}
-.transition-player{position:relative;aspect-ratio:16/9;background:#171716;display:grid;place-items:center}
+.transition-player{position:relative;background:#171716}
 .transition-player .error-state{color:#ece5d6}
 .season-end-overlay{position:absolute;inset:0;z-index:4;overflow:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:rgba(22,21,19,.96);color:#f6f0df;text-align:center}
 .season-end-overlay h2{margin:0;font-size:24px;color:#fff6e8}.season-end-overlay p{margin:0;color:#bdb2a1;font-size:13px}.season-end-overlay .eyebrow{color:#e17557}.season-end-overlay .secondary-button{background:#302c26;color:#f8edda;border-color:#655746}
