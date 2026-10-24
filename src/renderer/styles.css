@@ -144,6 +144,19 @@ h1 { margin: 0; font-family: var(--display-font); font-size: 30px; line-height: 
 .update-panel progress { width: 100%; height: 7px; accent-color: var(--brand); }
 .update-actions { display: flex; align-items: center; gap: 15px; margin: 20px 0 15px; }
 .update-panel small { display: block; font-size: 10px; color: var(--muted); line-height: 1.8; }
+.update-prompt-host { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; padding: 35px; background: transparent; color: var(--ink); }
+.update-prompt-host[open] { display: grid; place-items: center; }
+.update-prompt-host::backdrop { background: #24211e65; backdrop-filter: blur(5px); }
+.update-prompt { position: relative; width: 460px; max-width: 100%; padding: 36px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 25px 90px #24211e28; }
+.update-prompt .modal-close { font-size: 26px; line-height: 1; }
+.update-prompt-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 23px; border-radius: 12px; color: var(--brand); background: #c9432c0d; font-size: 30px; }
+.update-prompt h2 { margin: 0 0 14px; font: 700 27px var(--display-font); }
+.update-prompt p { margin: 0; font-size: 13px; line-height: 1.9; color: var(--muted); }
+.update-prompt-versions { display: flex; flex-direction: column; gap: 9px; margin: 22px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); overflow-wrap: anywhere; font-size: 12px; }
+.update-prompt-versions span { color: var(--muted); }
+.update-prompt-versions b { color: var(--brand); font-weight: 500; }
+.update-prompt .update-prompt-note { font-size: 11px; }
+.update-prompt-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 27px; }
 .detail-page { padding-top: 25px; padding-bottom: 40px; }
 .back-button { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; padding: 0 0 23px; }
 .back-button:hover { color: var(--brand); }

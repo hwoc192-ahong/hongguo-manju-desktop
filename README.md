@@ -2,7 +2,7 @@
 
 在 Windows 电脑上找漫剧、导入分享链接，并接着上次的进度观看。使用 Electron + React + TypeScript 开发，支持 Windows 10/11 x64。
 
-**[下载 Windows x64 安装包 · 0.2.11 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.2.11/Hongguo-Manju-0.2.11-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.2.11) · [安装指南](docs/installation.md)
+**[下载 Windows x64 安装包 · 0.3.1 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.3.1/Hongguo-Manju-0.3.1-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.3.1) · [安装指南](docs/installation.md)
 
 > 本项目是个人维护的第三方非官方客户端，与红果官方及其运营方没有隶属、合作或授权关系。相关品牌、作品、封面及其他内容的权利归各自权利方所有。
 
@@ -40,6 +40,12 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 
 ![后台缓存中心：多作品进度、任务操作和缓存目录](docs/screenshots/cache-center.png)
 
+### 启动更新提示
+
+0.3.1 检测到新版后弹出提示。选择「暂不更新」不下载，点击「立即更新」才下载，下载完成仍需确认「重启安装」。下图使用本地无害更新源，示例版本 0.3.2 仅用于测试，不代表已有该版本发布。
+
+![启动更新弹窗：当前版本、新版本与自主更新按钮](docs/screenshots/startup-update.png)
+
 <details>
 <summary>查看更多：继续观看与分享导入</summary>
 
@@ -58,13 +64,13 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 | 项目 | 当前状态 |
 | --- | --- |
 | 系统 | Windows 10 / 11 x64；暂无 macOS、Linux 或 Windows ARM64 安装包 |
-| 版本 | 0.3.0，测试版（Pre-release） |
-| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.3.0/Hongguo-Manju-0.3.0-Windows-x64.exe) |
+| 版本 | 0.3.1，测试版（Pre-release） |
+| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.3.1/Hongguo-Manju-0.3.1-Windows-x64.exe) |
 | 源码 | 可通过本页绿色 Code 按钮 → Download ZIP 下载 |
 | 运行依赖 | 源码包不含完整运行组件，仅下载 ZIP 无法直接观看 |
 | 手机与账号 | 完整个人构建无需手机或模拟器；不接入手机账号与跨设备同步 |
 
-普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.3.0，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
+普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.3.1，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
 
 ## 功能
 
@@ -76,13 +82,13 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 - 缓存中心可同时登记多部作品，最多两条任务轮转准备，支持暂停、继续和重试；关闭主窗口驻留托盘，重开接着缓存。
 - 自选缓存位置、校验迁移现有缓存；兼容 H.264 资源优先无损封装，减少重复编码。
 - 保存本机收藏、最近观看和播放进度，退出重开后继续观看。
-- 启动后自动检查并提示新版；点击“立即更新”才下载，下载完成后点击“重启安装”升级。
+- 启动约 2 秒后检查更新，发现新版弹出居中提示；点击“立即更新”才下载，下载完成后点击“重启安装”升级。
 
 推荐与榜单来自内容来源；收藏和观看记录保存在当前电脑。首版不接入手机账号，也不同步手机个性化推荐。下载导出、评论和签到福利暂未提供。
 
 ## 安装使用
 
-从 [0.3.0 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.3.0) 下载 `Hongguo-Manju-0.3.0-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
+从 [0.3.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.3.1) 下载 `Hongguo-Manju-0.3.1-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
 
 安装包包含精简 Java、签名桥接和 FFmpeg，不需要另行安装 Node、Python、Java、手机 APP 或 Android 模拟器，也不需要手动启动服务。
 
@@ -100,7 +106,7 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 
 记录与默认缓存位于 `%APPDATA%/红果漫剧桌面版/`，其中 `library.json` 保存收藏和观看位置，`player-profile.json` 保存本次安装的固定播放标识，`cache-settings.json` 保存缓存任务与自选目录。卸载默认保留个人记录。完整损坏的记录文件会先备份为 `library.json.corrupt-*`；单条坏记录会过滤，其余记录保留。
 
-应用从本仓库 GitHub Releases 获取更新（含测试版）。启动后自动检查，运行期间每 4 小时检查；发现新版后提示，点击「立即更新」才下载并校验；选择「暂不更新」可继续使用当前版本。点击顶部「更新」可查看状态、重试或「重启安装」。普通退出不安装更新。0.2.2 及更早版本需先手动安装一次 0.3.0；0.2.3 仍采用旧的自动下载行为，要避免后台下载可直接手动覆盖安装本版。升级保留收藏、进度和播放标识，详见 [更新说明](docs/auto-update.md)。安装包尚未配置 Windows 发布者代码签名。
+应用从本仓库 GitHub Releases 获取更新（含测试版）。启动约 2 秒后检查，运行期间每 4 小时检查；发现新版后弹出居中提示，同一版本在本次运行中只自动提醒一次，点击「立即更新」才下载并校验；选择「暂不更新」可继续使用当前版本。点击顶部「更新」可查看状态、重试或「重启安装」。普通退出不安装更新。0.2.2 及更早版本需先手动安装一次 0.3.1；0.2.3 仍采用旧的自动下载行为，要避免后台下载可直接手动覆盖安装本版。升级保留收藏、进度和播放标识，详见 [更新说明](docs/auto-update.md)。安装包尚未配置 Windows 发布者代码签名。
 
 ## 开始观看
 
@@ -113,6 +119,8 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 首集需要先准备完整媒体，再开始播放，加载时间受视频大小和网络影响。加载失败时请按 [常见问题](docs/installation.md#常见问题) 排查；不要反复点击不同集数。
 
 ## 验证记录
+
+0.3.1 启动弹窗、全屏层级、键盘操作及更新下载确认见 [启动更新验收](docs/startup-update-validation.md)。
 
 0.3.0 的多作品后台缓存、托盘关窗继续、队列重启、目录迁移与速度对比见 [后台缓存验收](docs/background-cache-validation.md)。
 
