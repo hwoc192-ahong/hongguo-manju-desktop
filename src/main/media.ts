@@ -71,7 +71,10 @@ export class MediaCache {
   const sameWork=ids.length===this.protectedIds.size&&ids.every(id=>this.protectedIds.has(id));
   if(ids.length){this.protectedIds=new Set(ids);if(!sameWork)this.pausedMessage=''}
   this.window=[...ids];this.failed=new Set([...this.failed].filter(id=>ids.includes(id)||this.groups.some(group=>group.ids.includes(id))));
-  for(const job of this.jobs.values())if((!ids.includes(job.id)&&!this.inBackground(job.id))||(job.foreground&&job.id!==ids[0]))this.cancel(job);
+  for(const job of this.jobs.values()){
+   if(job.foreground&&job.id!==ids[0]){if(this.inBackground(job.id)&&this.activeJobs.has(job))job.foreground=false;else this.cancel(job)}
+   else if(!ids.includes(job.id)&&!this.inBackground(job.id))this.cancel(job);
+  }
   this.pump();
   return this.bufferState();
  }

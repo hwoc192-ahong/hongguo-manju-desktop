@@ -109,6 +109,23 @@ test('两条后台通道均忙时当前播放抢占一条，另一部任务不�
  f.release();await until(()=>f.media.stateFor(ids.slice(0,6)).ready===6);
 });
 
+test('当前集准备中加入后台队列，离页后原任务继续完成而非重新下载',async t=>{
+ const f=await fixture(t,{hold:ids[0],concurrency:2});f.media.setBufferWindow([ids[0]]);const playback=f.media.prepare(ids[0]);
+ await until(()=>f.fetched.includes(ids[0]));f.media.setBackgroundGroups([{id:ids[10],ids:ids.slice(0,3),paused:false}]);
+ f.media.setBufferWindow([]);await tick();assert.deepEqual(f.aborted,[]);
+ f.release();await playback;await until(()=>f.media.stateFor(ids.slice(0,3)).ready===3);
+ assert.equal(f.fetched.filter(id=>id===ids[0]).length,1);
+});
+
+test('抢占通道尚未释放就离页，未启动的前台任务仍可由后台队列补齐',async t=>{
+ const f=await fixture(t,{hold:ids[3],holdEncode:1,concurrency:2});
+ f.media.setBackgroundGroups([{id:ids[10],ids:ids.slice(0,3),paused:false},{id:ids[11],ids:ids.slice(3,6),paused:false}]);
+ await until(()=>f.encoded.length===1&&f.fetched.includes(ids[3]));
+ f.media.setBufferWindow([ids[1]]);void f.media.prepare(ids[1]).catch(()=>{});f.media.setBufferWindow([]);
+ f.release();await until(()=>f.media.stateFor(ids.slice(0,6)).ready===6);
+ assert.equal(f.fetched.filter(id=>id===ids[1]).length,1);
+});
+
 test('播放正在缓冲的同一集时接管任务，不重复下载',async t=>{
  const f=await fixture(t,{hold:ids[1]});f.media.setBufferWindow(ids.slice(0,5));await f.media.prepare(ids[0]);await until(()=>f.fetched.includes(ids[1]));
  f.media.setBufferWindow(ids.slice(1,6));const next=f.media.prepare(ids[1]);f.release();await next;

@@ -45,7 +45,7 @@ try{
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].show());await page.getByRole('button',{name:'缓存中心',exact:true}).click();
  events.push('closing during media preparation cannot autoplay a late resource or advance watching history in tray');
  for(let i=1;i<=3;i++){await page.getByRole('textbox',{name:'后台缓存分享链接'}).fill('fixture'+i);await page.getByRole('button',{name:'添加缓存',exact:true}).click();await until(s=>s.tasks.length===i)}
- assert.equal(await page.locator('.cache-task').count(),3);
+ await page.locator('.cache-task').nth(2).waitFor();assert.equal(await page.locator('.cache-task').count(),3);
  await until(s=>s.tasks.filter(t=>t.state.ready>0).length>=2);
  const middle=page.locator('.cache-task').nth(1);await middle.getByRole('button',{name:'暂停缓存',exact:true}).click();await until(s=>s.tasks[1].paused);
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1400,1200));await page.waitForTimeout(150);await page.locator('.content-scroll').evaluate(el=>el.scrollTop=0);await page.waitForTimeout(150);
