@@ -1,7 +1,49 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,mkdir,rm,readFile,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';
 import {CacheManager} from '../src/main/cache-manager';
 const series=(id:string)=>({id,title:'缓存作品'+id,cover:'',description:'',total:2,episodes:[{id:id+'01',order:1},{id:id+'02',order:2}]});
-async function fixture(t:any){const dir=await mkdtemp(path.join(tmpdir(),'manju-queue-'));t.after(()=>rm(dir,{recursive:true,force:true}));let groups:any[]=[];const removed:string[][]=[];const media={location:path.join(dir,'media-cache'),usedBytes:10,downloadConcurrency:4,downloadBytesPerSecond:0,setConcurrency(value:number){this.downloadConcurrency=value},deleteEpisodes:async(ids:string[])=>{removed.push(ids);return {freedBytes:10}},setBackgroundGroups:(value:any)=>{groups=value},stateFor:(ids:string[])=>({status:'preparing',total:ids.length,ready:0,failed:0,message:''}),freeBytes:async()=>5*1024**3,retryBuffer:()=>{}};return {dir,media,removed,get groups(){return groups}}}
+async function fixture(t:any){const dir=await mkdtemp(path.join(tmpdir(),'manju-queue-'));t.after(()=>rm(dir,{recursive:true,force:true}));let groups:any[]=[],limits:any;const removed:string[][]=[];const media={location:path.join(dir,'media-cache'),usedBytes:10,downloadConcurrency:4,downloadBytesPerSecond:0,setConcurrency(value:number){this.downloadConcurrency=value},setLimits(value:any){limits=value},deleteEpisodes:async(ids:string[])=>{removed.push(ids);return {freedBytes:10}},setBackgroundGroups:(value:any)=>{groups=value},stateFor:(ids:string[])=>({status:'preparing',total:ids.length,ready:0,failed:0,message:''}),freeBytes:async()=>5*1024**3,retryBuffer:()=>{}};return {dir,media,removed,get groups(){return groups},get limits(){return limits}}}
+
+test('旧版设置恢复默认总额度和普通优先级，不会被当成损坏文件',async t=>{
+ const f=await fixture(t),work=series('12345678');
+ await writeFile(path.join(f.dir,'cache-settings.json'),JSON.stringify({version:1,directory:f.media.location,closeToTray:false,tasks:[{series:work,paused:true,createdAt:1}]}));
+ const manager=new CacheManager(f.dir,f.media as any);await manager.init();const snapshot=await manager.snapshot();
+ assert.deepEqual(snapshot.limits,{maxGiB:20,bandwidthMiB:0});assert.equal(snapshot.tasks[0].priority,'normal');assert.equal(snapshot.closeToTray,false);assert.equal(snapshot.message,'');
+ assert.deepEqual(f.limits,{maxBytes:20*1024**3,bytesPerSecond:0});assert.equal(f.groups[0].priority,'normal');
+});
+
+test('总额度和总限速支持小数及无限制，原子持久化后传递字节单位并重启恢复',async t=>{
+ const f=await fixture(t),manager=new CacheManager(f.dir,f.media as any);await manager.init();assert.deepEqual((await manager.snapshot()).limits,{maxGiB:20,bandwidthMiB:0});
+ await manager.setLimits({maxGiB:12.5,bandwidthMiB:2.5});assert.deepEqual(f.limits,{maxBytes:12.5*1024**3,bytesPerSecond:2.5*1024**2});
+ const saved=JSON.parse(await readFile(path.join(f.dir,'cache-settings.json'),'utf8'));assert.deepEqual(saved.limits,{maxGiB:12.5,bandwidthMiB:2.5});
+ const reopened=new CacheManager(f.dir,f.media as any);await reopened.init();assert.deepEqual((await reopened.snapshot()).limits,saved.limits);
+ await reopened.setLimits({maxGiB:0,bandwidthMiB:0});assert.deepEqual(f.limits,{maxBytes:0,bytesPerSecond:0});
+ await reopened.setLimits({maxGiB:1e-12,bandwidthMiB:1e-12});assert.deepEqual(f.limits,{maxBytes:1,bytesPerSecond:1});
+});
+
+test('非法额度不写入设置，保存失败也不改变媒体限制',async t=>{
+ const f=await fixture(t),manager=new CacheManager(f.dir,f.media as any);await manager.init();await manager.setLimits({maxGiB:10,bandwidthMiB:5});
+ const before=await readFile(path.join(f.dir,'cache-settings.json'),'utf8');
+ for(const invalid of [null,{}, {maxGiB:NaN,bandwidthMiB:0},{maxGiB:Infinity,bandwidthMiB:0},{maxGiB:-1,bandwidthMiB:0},{maxGiB:10001,bandwidthMiB:0},{maxGiB:20,bandwidthMiB:-1},{maxGiB:20,bandwidthMiB:1001},{maxGiB:20,bandwidthMiB:'5'}])await assert.rejects(async()=>manager.setLimits(invalid as any),{code:'INVALID_INPUT'});
+ assert.equal(await readFile(path.join(f.dir,'cache-settings.json'),'utf8'),before);
+ await mkdir(path.join(f.dir,'cache-settings.json.tmp'));await assert.rejects(manager.setLimits({maxGiB:1,bandwidthMiB:1}),{code:'CACHE_SETTINGS'});
+ assert.deepEqual((await manager.snapshot()).limits,{maxGiB:10,bandwidthMiB:5});assert.deepEqual(f.limits,{maxBytes:10*1024**3,bytesPerSecond:5*1024**2});
+});
+
+test('优先级保存后调度，重复添加及暂停恢复均保留；本地清单不能被优先级操作升级',async t=>{
+ const f=await fixture(t),manager=new CacheManager(f.dir,f.media as any),work=series('12345678'),local=series('23456789');await manager.init();await manager.add(work);await manager.remember(local);
+ await manager.setPriority(work.id,'high');await manager.add(work);await manager.action(work.id,'pause');await manager.action(work.id,'resume');assert.equal(f.groups[0].priority,'high');
+ const reopened=new CacheManager(f.dir,f.media as any);await reopened.init();assert.equal((await reopened.snapshot()).tasks[0].priority,'high');
+ const before=await readFile(path.join(f.dir,'cache-settings.json'),'utf8');await assert.rejects(reopened.setPriority(local.id,'low'),{code:'CACHE_TASK'});await assert.rejects(reopened.setPriority(work.id,'urgent' as any),{code:'INVALID_INPUT'});assert.equal(await readFile(path.join(f.dir,'cache-settings.json'),'utf8'),before);assert.equal(f.groups.length,1);
+ await mkdir(path.join(f.dir,'cache-settings.json.tmp'));await assert.rejects(reopened.setPriority(work.id,'low'),{code:'CACHE_SETTINGS'});assert.equal(f.groups[0].priority,'high');
+});
+
+test('直接添加的后台任务移除后保留只读清理入口，不丢失作品索引',async t=>{
+ const f=await fixture(t),manager=new CacheManager(f.dir,f.media as any),work=series('12345678');f.media.stateFor=ids=>({status:'complete',total:ids.length,ready:ids.length,failed:0,message:''});await manager.init();await manager.add(work);await manager.action(work.id,'remove');const snapshot=await manager.snapshot();assert.equal(snapshot.tasks.length,1);assert.equal(snapshot.tasks[0].registered,false);assert.equal(f.groups.length,0);await manager.action(work.id,'delete');assert.equal((await manager.snapshot()).tasks.length,0);
+});
+
+test('仅有断点或其他画质文件的作品也保留只读清理入口',async t=>{
+ const f=await fixture(t),manager=new CacheManager(f.dir,f.media as any),work=series('12345678');(f.media as any).stateFor=(ids:string[])=>({status:'idle',total:ids.length,ready:0,failed:0,message:'',cachedBytes:100});await manager.init();await manager.remember(work);const snapshot=await manager.snapshot();assert.equal(snapshot.tasks.length,1);assert.equal(snapshot.tasks[0].registered,false);assert.equal(snapshot.tasks[0].state.cachedBytes,100);assert.equal(f.groups.length,0);
+});
 
 test('缓存并行数默认四路，调整后原子保存并重启恢复，非法值被拒绝',async t=>{
  const f=await fixture(t),manager=new CacheManager(f.dir,f.media as any);await manager.init();assert.equal((await manager.snapshot()).concurrency,4);

@@ -1,4 +1,10 @@
-import {readPlaybackRate,savePlaybackRate,PLAYBACK_RATES} from './player-preferences';
+import './playback-enhancements.css';
+import {nextSeason,episodeFinished,sleepExpired} from './season-continuation';
+import type {SleepPlan} from './season-continuation';
+import {playbackDuration,completedResumeResource} from './progressive-resume';
+import type {PlayerPreferences} from './player-preferences';
+import type {Recommendations as RecommendationData,VideoQuality} from '../shared/types';
+import {readPlaybackRate,savePlaybackRate,PLAYBACK_RATES,readPlayerPreferences,savePlayerPreferences,qualityChoices} from './player-preferences';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
 import type { Board, BufferState, CacheOverview, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
@@ -95,6 +101,17 @@ export default function App() {
   const [libraryError, setLibraryError] = useState('');
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [preferences,setPreferences]=useState(readPlayerPreferences);
+  const [sleep,setSleepState]=useState<SleepPlan>({kind:'off'});
+  const sleepRef=useRef<SleepPlan>(sleep);
+  const [startFirst,setStartFirst]=useState<string|null>(null);
+  useEffect(()=>{if(!activeId)setStartFirst(null)},[activeId]);
+  const changeSleep=(plan:SleepPlan)=>{sleepRef.current=plan;setSleepState(plan)};
+  const canContinue=()=>!backgrounded&&!sleepExpired(sleepRef.current);
+  const finishEpisode=()=>{const plan=episodeFinished(sleepRef.current);changeSleep(plan);return !backgrounded&&!sleepExpired(plan)};
+  const changePreferences=(value:PlayerPreferences)=>{setPreferences(value);if(!savePlayerPreferences(value))notify('播放设置已应用，但未能保存。')};
+  useEffect(()=>{const tick=()=>{if(sleepRef.current.kind==='deadline'&&sleepExpired(sleepRef.current)){changeSleep({kind:'stopped'});document.querySelector('video')?.pause()}};const timer=window.setInterval(tick,500);document.addEventListener('visibilitychange',tick);return()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',tick)}},[]);
+  const session:PlaybackSession={preferences,onPreferences:changePreferences,sleep,onSleep:changeSleep,canContinue,finishEpisode,onManualPlay:()=>{if(sleepExpired(sleepRef.current))changeSleep({kind:'off'})}};
   const [rate, setRate] = useState(readPlaybackRate);
   const changeRate = (value: number) => { setRate(value); if (!savePlaybackRate(value)) notify('倍速已应用，但未能保存，重开软件后可能需要重新设置。'); };
   const [importOpen, setImportOpen] = useState(false);
@@ -111,6 +128,7 @@ export default function App() {
   const requestId = useRef(0);
   const scrollArea = useRef<HTMLDivElement>(null);
   const notify = useCallback((message: string) => setToast(message), []);
+  useEffect(()=>{void call(()=>window.desktop.videoQuality(readPlayerPreferences().quality)).catch(error=>notify(`画质设置同步失败：${errorMessage(error)}`))},[notify]);
   useEffect(() => {
     let allowClose = false;
     let closing = false;
@@ -201,11 +219,11 @@ export default function App() {
         <form className="search-box" onSubmit={submitSearch}><Icon name="search" size={18} /><input value={query} onChange={event => setQuery(event.target.value)} aria-label="搜索漫剧名称" placeholder="搜索漫剧" maxLength={200} /><button type="submit" aria-label="搜索" title="搜索"><Icon name="arrow" size={16} /></button></form>
         <button className="top-import" aria-label="导入分享" onClick={() => { setImportError(''); setImportOpen(true); }}><Icon name="link" size={17} /><span>导入链接</span></button>
         <nav className="library-nav" aria-label="个人记录"><button className={view === 'favorites' && !activeId ? 'active' : ''} aria-label="我的收藏" onClick={() => navigate('favorites')}>收藏</button><button className={view === 'history' && !activeId ? 'active' : ''} aria-label="观看历史" onClick={() => navigate('history')}>历史</button></nav>
-        <UpdateControl/>
+        <button className="diagnostic-button" onClick={()=>void call(()=>window.desktop.exportDiagnostics()).then(result=>{if(result.saved)notify('诊断信息已导出')}).catch(error=>notify(errorMessage(error)))}>导出诊断</button><UpdateControl/>
         <button className={`cache-nav ${view==='cache'&&!activeId?'active':''}`} onClick={()=>navigate('cache')} aria-label="缓存中心">缓存{cache?.tasks.some(task=>!task.paused&&task.state.status!=='complete')&&<i/>}</button>
       </header>
       <main className="content-scroll" ref={scrollArea}>
-        {activeId ? <Detail onOpen={setActiveId} rate={rate} onRateChange={changeRate} key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : view==='cache'?<CacheCenter state={cache} error={cacheError} onRefresh={()=>void refreshCache()} onOpen={setActiveId} favorites={library.favorites}/>:<div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
+        {activeId ? <Detail session={session} startFirst={startFirst===activeId} onOpen={(id,first=false)=>{setStartFirst(first?id:null);setActiveId(id)}} rate={rate} onRateChange={changeRate} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : view==='cache'?<CacheCenter state={cache} error={cacheError} onRefresh={()=>void refreshCache()} onOpen={setActiveId} favorites={library.favorites}/>:<div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
           {view !== 'discover' && <div className="page-heading"><div><h1>{heading}</h1><p>{subheading}</p></div>{view === 'search' && <button className="refresh-button" onClick={() => void loadCatalog()} disabled={loading}><Icon name="refresh" size={17} />刷新</button>}</div>}
           {spotlight && <section className="spotlight" aria-label="作品推荐">
             <Cover work={spotlight} className="spotlight-art" />
@@ -229,82 +247,116 @@ export default function App() {
   </div>;
 }
 
-function Detail({ onOpen, rate, onRateChange, id, library, onLibrary, onFavorite, favoriteBusy, onBack, notify }: { onOpen:(id:string)=>void; rate: number; onRateChange: (rate: number) => void; id: string; library: Library; onLibrary: (library: Library) => void; onFavorite: (work: Work) => void; favoriteBusy: boolean; onBack: () => void; notify: (message: string) => void }) {
-  const [series, setSeries] = useState<Series | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [episode, setEpisode] = useState<Episode | null>(null);
-  const [autoNext, setAutoNext] = useState(true);
-  const [sortDescending, setSortDescending] = useState(false);
-  const [reload, setReload] = useState(0);
-  const [buffer, setBuffer] = useState<BufferState | null>(null);
-  const [bufferError, setBufferError] = useState('');
-  const [bufferRetry, setBufferRetry] = useState(0);
-  const appliedBufferRetry = useRef(0);
-  const resume = useRef(library.history.find(item => item.seriesId === id));
-  useEffect(() => {
-    let live = true; setLoading(true); setError('');
-    void call(() => window.desktop.series(id)).then(value => {
-      if (!live) return; const ordered = { ...value, episodes: [...value.episodes].sort((a, b) => a.order - b.order) };
-      setSeries(ordered); setEpisode(selectEpisode(ordered.episodes, resume.current?.episodeId) || null);
-    }).catch(error => { if (live) setError(errorMessage(error)); }).finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
-  }, [id, reload]);
-  useEffect(() => { document.querySelector('.content-scroll')?.scrollTo({ top: 0 }); }, []);
-  const index = series?.episodes.findIndex(item => item.id === episode?.id) ?? -1;
-  useEffect(() => {
-    if (!series || index < 0) return;
-    let live = true; let timer: number | undefined;
-    setBuffer(null); setBufferError('');
-    const refresh = async () => {
-      try { const value = await call(() => window.desktop.bufferState()); if (live) { setBuffer(value); setBufferError(''); } }
-      catch (error) { if (live) setBufferError(errorMessage(error)); }
-    };
-    // Prepare the current episode and all later episodes, then fill earlier gaps.
-    const ordered = [...series.episodes.slice(index), ...series.episodes.slice(0, index)].map(item => item.id);
-    void (async () => {
-      await call(() => window.desktop.bufferEpisodes(ordered));
-      if (bufferRetry !== appliedBufferRetry.current) { appliedBufferRetry.current = bufferRetry; await call(() => window.desktop.retryBuffer()); }
-      if (!live) return; await refresh();
-      if (live) timer = window.setInterval(() => { void refresh(); }, 1000);
-    })().catch(error => { if (live) setBufferError(errorMessage(error)); });
-    return () => { live = false; window.clearInterval(timer); };
-  }, [series, index, bufferRetry]);
-  useEffect(() => () => { void call(() => window.desktop.bufferEpisodes([])).catch(() => {}); }, []);
-  const favorite = library.favorites.some(item => item.id === id);
-  const episodes = sortDescending ? [...(series?.episodes || [])].reverse() : series?.episodes || [];
-  const next = () => { if (series && index >= 0 && index < series.episodes.length - 1) setEpisode(series.episodes[index + 1]); };
-  return <div className="detail-page"><button className="back-button" onClick={onBack}><Icon name="back" size={18} />返回</button>
-    {loading ? <div className="center-loading"><span className="spinner" /><p>正在打开这个故事…</p></div> : error ? <ErrorState message={error} onRetry={() => setReload(value => value + 1)} /> : series && <>
-      <div className="detail-heading"><div><span className="eyebrow">NOW SHOWING</span><h1>{series.title}</h1><p>{series.categories?.join(' · ')}{series.categories?.length ? ' · ' : ''}{series.total ? `全${series.total}集` : `${series.episodes.length}集`}</p></div><button className={`favorite-button ${favorite ? 'is-favorite' : ''}`} disabled={favoriteBusy} onClick={() => onFavorite(series)}><Icon name="heart" size={18} />{favorite ? '已收藏' : '收藏漫剧'}</button></div>
-      <div className="watch-layout"><section className="watch-main">
-        {episode&&<div className="background-cache-entry"><span>当前作品可加入队列，切换页面后继续缓存</span><button className="secondary-button" onClick={()=>void call(()=>window.desktop.cacheAdd(series.id)).then(()=>notify('已加入后台缓存，可在顶部“缓存”查看进度和托盘设置。')).catch(error=>notify(errorMessage(error)))}>加入后台缓存</button></div>}
-        {episode && <CacheProgress state={buffer} episodes={series.episodes} error={bufferError} onRetry={()=>setBufferRetry(value=>value+1)} />}
-        {episode ? <PlayerSurface episodeId={episode.id}><Player buffer={buffer} bufferError={bufferError} rate={rate} onRateChange={onRateChange} key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /></PlayerSurface> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
-        <div className="now-playing"><div><span className="playing-dot" /><strong>{episode ? `第${episode.order}集` : '剧集待更新'}</strong><span>{episode?.title && episode.title !== `第${episode.order}集` ? episode.title : series.title}</span></div><label className="toggle-label"><input type="checkbox" checked={autoNext} onChange={event => setAutoNext(event.target.checked)} /><span className="toggle-track" />自动连播</label></div>
-        <section className="story-info"><Cover work={series} /><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category => <span key={category}>{category}</span>)}</div><p>{series.description || '暂无作品简介。'}</p></div></section>
-      </section><aside className="episode-panel"><div className="episode-heading"><div><h2>选集</h2><span>{series.episodes.length}集可播放</span></div><button onClick={() => setSortDescending(value => !value)}>{sortDescending ? '倒序 ↓' : '正序 ↑'}</button></div><div className="episode-grid">{episodes.map(item => <button key={item.id} className={item.id === episode?.id ? 'current' : ''} onClick={() => setEpisode(item)} title={item.title || `第${item.order}集`} aria-label={`播放第${item.order}集`} aria-current={item.id === episode?.id ? 'true' : undefined}>{item.id === episode?.id && <span className="equalizer"><i /><i /><i /></span>}{item.order}</button>)}</div></aside></div>
-      <Recommendations id={id} onOpen={onOpen} renderCard={(work,open)=><WorkCard work={work} onOpen={open}/>}/>
-    </>}
-  </div>;
+interface PlaybackSession {
+ preferences:PlayerPreferences;onPreferences:(value:PlayerPreferences)=>void;
+ sleep:SleepPlan;onSleep:(plan:SleepPlan)=>void;canContinue:()=>boolean;finishEpisode:()=>boolean;onManualPlay:()=>void;
+}
+function SleepControl({session}:{session:PlaybackSession}){
+ const plan=session.sleep;
+ const value=plan.kind==='deadline'?'deadline':plan.kind==='episodes'?`episodes-${plan.remaining}`:plan.kind;
+ return <label className="sleep-control">睡眠 <select aria-label="睡眠定时" value={value} onChange={event=>{const value=event.target.value;session.onSleep(value==='off'?{kind:'off'}:value.startsWith('minutes-')?{kind:'deadline',deadline:Date.now()+Number(value.slice(8))*60000}:{kind:'episodes',remaining:Number(value.slice(9))})}}>
+ <option value="off">关闭</option>{plan.kind==='deadline'&&<option value="deadline">{Math.max(1,Math.ceil((plan.deadline-Date.now())/60000))} 分钟后停止</option>}{plan.kind==='stopped'&&<option value="stopped">已停止 · 手动播放可继续</option>}
+ <option value="minutes-15">15 分钟后</option><option value="minutes-30">30 分钟后</option><option value="minutes-60">60 分钟后</option>
+ <option value="episodes-1">播完当前集</option><option value="episodes-2">再播完 2 集</option><option value="episodes-3">再播完 3 集</option><option value="episodes-4">再播完 4 集</option><option value="episodes-5">再播完 5 集</option>
+ </select></label>;
+}
+function Detail({ session,startFirst,onOpen, rate, onRateChange, id, library, onLibrary, onFavorite, favoriteBusy, onBack, notify }: {session:PlaybackSession;startFirst:boolean; onOpen:(id:string,first?:boolean)=>void; rate: number; onRateChange: (rate: number) => void; id: string; library: Library; onLibrary: (library: Library) => void; onFavorite: (work: Work) => void; favoriteBusy: boolean; onBack: () => void; notify: (message: string) => void }) {
+ const [series,setSeries]=useState<Series|null>(null),[episode,setEpisode]=useState<Episode|null>(null);
+ const [loading,setLoading]=useState(true),[error,setError]=useState(''),[reload,setReload]=useState(0);
+ const [buffer,setBuffer]=useState<BufferState|null>(null),[bufferError,setBufferError]=useState(''),[bufferRetry,setBufferRetry]=useState(0);
+ const [sortDescending,setSortDescending]=useState(false);
+ const [related,setRelated]=useState<RecommendationData|null>(null),[relatedError,setRelatedError]=useState(''),[relatedLoading,setRelatedLoading]=useState(true),[relatedRetry,setRelatedRetry]=useState(0);
+ const [ended,setEnded]=useState(false),[pendingEnd,setPendingEnd]=useState(false);
+ const sessionRef=useRef(session);sessionRef.current=session;
+ const prefetched=useRef(new Set<string>());
+ const libraryRef=useRef(library);libraryRef.current=library;
+ useEffect(()=>{
+  let live=true;setLoading(true);setError('');setEpisode(null);setSeries(null);setEnded(false);setPendingEnd(false);setBuffer(null);
+  void call(()=>window.desktop.series(id)).then(value=>{if(!live)return;const ordered={...value,episodes:[...value.episodes].sort((a,b)=>a.order-b.order)};setSeries(ordered);setEpisode(selectEpisode(ordered.episodes,startFirst?undefined:libraryRef.current.history.find(item=>item.seriesId===id)?.episodeId)||null)}).catch(error=>{if(live)setError(errorMessage(error))}).finally(()=>{if(live)setLoading(false)});
+  return()=>{live=false};
+ },[id,reload,startFirst]);
+ useEffect(()=>{
+  let live=true;setRelated(null);setRelatedLoading(true);setRelatedError('');
+  void call(()=>window.desktop.recommendations(id,relatedRetry>0)).then(value=>{if(live)setRelated(value)}).catch(error=>{if(live)setRelatedError(errorMessage(error))}).finally(()=>{if(live)setRelatedLoading(false)});
+  return()=>{live=false};
+ },[id,relatedRetry]);
+ const index=series?.episodes.findIndex(item=>item.id===episode?.id)??-1;
+ const immediate=series&&related?nextSeason(series,related.seasons.map(item=>item.work)):undefined;
+ useEffect(()=>{if(!immediate||prefetched.current.has(immediate.id))return;prefetched.current.add(immediate.id);void call(()=>window.desktop.cacheAdd(immediate.id)).catch(()=>{prefetched.current.delete(immediate.id)})},[immediate?.id]);
+ useEffect(()=>{
+  if(!pendingEnd||relatedLoading||!series||series.id!==id)return;
+  setPendingEnd(false);
+  if(immediate&&session.preferences.autoNext&&session.canContinue()&&!relatedError){onOpen(immediate.id,true)}
+ },[pendingEnd,relatedLoading,relatedError,immediate?.id,session.preferences.autoNext,session.sleep,id]);
+ useEffect(()=>{
+  if(!series||index<0)return;
+  let live=true,timer:number|undefined;setBuffer(null);setBufferError('');
+  const refresh=async()=>{try{const state=await call(()=>window.desktop.bufferState());if(live){setBuffer(state);setBufferError('')}}catch(error){if(live)setBufferError(errorMessage(error))}};
+  const ordered=[...series.episodes.slice(index),...series.episodes.slice(0,index)].map(item=>item.id);
+  void(async()=>{await call(()=>window.desktop.videoQuality(sessionRef.current.preferences.quality));if(!live)return;await call(()=>window.desktop.bufferEpisodes(ordered));if(bufferRetry)await call(()=>window.desktop.retryBuffer());if(!live)return;await refresh();if(live)timer=window.setInterval(()=>void refresh(),1000)})().catch(error=>{if(live)setBufferError(errorMessage(error))});
+  return()=>{live=false;window.clearInterval(timer)};
+ },[series,index,bufferRetry]);
+ useEffect(()=>()=>{void call(()=>window.desktop.bufferEpisodes([])).catch(()=>{})},[]);
+ const choose=(item:Episode)=>{setEnded(false);setPendingEnd(false);setEpisode(item)};
+ const next=()=>{if(series&&index>=0&&index<series.episodes.length-1)choose(series.episodes[index+1])};
+ const finished=()=>{
+  if(index<0||!series||series.id!==id)return;
+  const allowed=sessionRef.current.finishEpisode();
+  if(index<series.episodes.length-1){if(allowed&&sessionRef.current.preferences.autoNext)next();return}
+  setEnded(true);setPendingEnd(allowed&&sessionRef.current.preferences.autoNext);
+ };
+ const favorite=library.favorites.some(item=>item.id===id);
+ const episodes=sortDescending?[...(series?.episodes||[])].reverse():series?.episodes||[];
+ const endOverlay=ended?<div className="season-end-overlay" role="status"><span className="eyebrow">STORY CONTINUES</span><h2>{session.sleep.kind==='stopped'?'已按睡眠计划停止':relatedLoading?'正在查找下一季…':relatedError?'后续作品查询暂时失败':immediate?'本季已看完':'本季已完结'}</h2>
+ {relatedLoading?<p>正在核对同名下一季，请稍候。</p>:relatedError?<><p>{relatedError}</p><button className="secondary-button" onClick={()=>setRelatedRetry(value=>value+1)}>重试查找后续作品</button></>:<><p>{immediate?'已找到同名下一季；可手动开始，自动连播开启时会继续。':'未找到可唯一确认的紧接下一季，看看其他故事。'}</p>{related?.message&&<p>{related.message}</p>}{immediate&&<button className="primary-button" onClick={()=>{session.onManualPlay();onOpen(immediate.id,true)}}>播放 {immediate.title}</button>}<div className="end-recommendations">{related?.similar.slice(0,6).map(item=><button key={item.work.id} onClick={()=>{session.onManualPlay();onOpen(item.work.id,true)}}><Cover work={item.work}/><span>{item.work.title}</span></button>)}</div></>}
+ <button className="secondary-button" onClick={()=>{session.onManualPlay();setEnded(false);setPendingEnd(false);document.querySelector<HTMLVideoElement>('.player-surface video')?.dispatchEvent(new Event('replay-request'))}}>重播本集</button></div>:null;
+ return <div className="detail-page"><button className="back-button" onClick={onBack}><Icon name="back" size={18}/>返回</button>
+ {series&&<div className="detail-heading"><div><span className="eyebrow">NOW SHOWING</span><h1>{series.title}</h1><p>{series.categories?.join(' · ')} · {series.episodes.length}集</p></div><button className={`favorite-button ${favorite?'is-favorite':''}`} disabled={favoriteBusy} onClick={()=>onFavorite(series)}><Icon name="heart" size={18}/>{favorite?'已收藏':'收藏漫剧'}</button></div>}
+ <div className="watch-layout"><section className="watch-main">
+ {series&&episode&&<><div className="background-cache-entry"><span>下一季会在确认后自动加入缓存</span><button className="secondary-button" onClick={()=>void call(()=>window.desktop.cacheAdd(series.id)).then(()=>notify('已加入后台缓存')).catch(error=>notify(errorMessage(error)))}>缓存当前整季</button></div><CacheProgress state={buffer} episodes={series.episodes} error={bufferError} onRetry={()=>setBufferRetry(value=>value+1)}/></>}
+ <PlayerSurface episodeId={episode?.id||id}>
+ {loading?<div className="player transition-player"><div className="player-overlay"><span className="spinner"/><strong>正在打开下一段故事…</strong></div></div>:error?<div className="player transition-player"><ErrorState message={error} onRetry={()=>setReload(value=>value+1)}/></div>:series&&episode?<Player session={session} onManualStart={()=>{setEnded(false);setPendingEnd(false)}} endOverlay={endOverlay} buffer={buffer} bufferError={bufferError} rate={rate} onRateChange={onRateChange} key={`${series.id}:${episode.id}`} series={series} episode={episode} initialTime={startFirst?0:library.history.find(item=>item.seriesId===id&&item.episodeId===episode.id)?.time||0} onLibrary={onLibrary} onPrevious={index>0?()=>choose(series.episodes[index-1]):undefined} onNext={index<series.episodes.length-1?next:undefined} onEnded={finished} notify={notify}/>:<div className="unavailable-player"><h3>暂时没有可播放剧集</h3><button onClick={()=>setReload(value=>value+1)}>重新获取剧集</button></div>}
+ </PlayerSurface>
+ <div className="now-playing"><strong>{episode?`第${episode.order}集`:'准备播放'}</strong><SleepControl session={session}/><label className="toggle-label"><input type="checkbox" checked={session.preferences.autoNext} onChange={event=>session.onPreferences({...session.preferences,autoNext:event.target.checked})}/><span className="toggle-track"/>自动连播</label></div>
+ {series&&<section className="story-info"><Cover work={series}/><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category=><span key={category}>{category}</span>)}</div><p>{series.description||'暂无作品简介。'}</p></div></section>}
+ </section><aside className="episode-panel"><div className="episode-heading"><div><h2>选集</h2><span>{episodes.length}集可播放</span></div><button onClick={()=>setSortDescending(value=>!value)}>{sortDescending?'倒序 ↓':'正序 ↑'}</button></div><div className="episode-grid">{episodes.map(item=><button key={item.id} className={item.id===episode?.id?'current':''} onClick={()=>{session.onManualPlay();choose(item)}} aria-label={`播放第${item.order}集`}>{item.order}</button>)}</div></aside></div>
+ <Recommendations id={id} supplied={{data:related,error:relatedError,loading:relatedLoading,retry:()=>setRelatedRetry(value=>value+1)}} onOpen={id=>onOpen(id,true)} renderCard={(work,open)=><WorkCard work={work} onOpen={open}/>}/>
+ </div>;
 }
 
-function Player({ rate, onRateChange, series, episode, initialTime, onLibrary, onPrevious, onNext, autoNext, onEnded, notify, buffer, bufferError }: { rate: number; onRateChange: (rate: number) => void; series: Series; episode: Episode; initialTime: number; onLibrary: (library: Library) => void; onPrevious?: () => void; onNext?: () => void; autoNext: boolean; onEnded: () => void; notify: (message: string) => void; buffer:BufferState|null;bufferError:string }) {
+function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, episode, initialTime, onLibrary, onPrevious, onNext, onEnded, notify, buffer, bufferError }: {session:PlaybackSession;endOverlay:ReactNode;onManualStart:()=>void; rate: number; onRateChange: (rate: number) => void; series: Series; episode: Episode; initialTime: number; onLibrary: (library: Library) => void; onPrevious?: () => void; onNext?: () => void; onEnded: () => void; notify: (message: string) => void; buffer:BufferState|null;bufferError:string }) {
   const video = useRef<HTMLVideoElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const [resource, setResource] = useState<Playback | null>(null);
+  const resourceRef=useRef(resource);resourceRef.current=resource;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [waiting, setWaiting] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(episode.duration || 0);
-  const [volume, setVolume] = useState(0.8);
-  const [muted, setMuted] = useState(false);
+  const {volume,muted,quality}=session.preferences;
+  const setVolume=(value:number)=>session.onPreferences({...session.preferences,volume:value,muted:false});
+  const setMuted=(value:boolean|((value:boolean)=>boolean))=>session.onPreferences({...session.preferences,muted:typeof value==='function'?value(muted):value});
+  const sessionRef=useRef(session);sessionRef.current=session;
+  const [pip,setPip]=useState(false),[pipError,setPipError]=useState('');
+  const [qualityBusy,setQualityBusy]=useState(false);
+  const pipSupported=typeof document.pictureInPictureEnabled==='boolean'&&document.pictureInPictureEnabled;
+  useEffect(()=>{if(session.sleep.kind==='stopped')video.current?.pause()},[session.sleep.kind]);
+  useEffect(()=>{const changed=()=>setPip(document.pictureInPictureElement===video.current);const element=video.current;element?.addEventListener('enterpictureinpicture',changed);element?.addEventListener('leavepictureinpicture',changed);return()=>{element?.removeEventListener('enterpictureinpicture',changed);element?.removeEventListener('leavepictureinpicture',changed)}},[resource]);
+  useEffect(()=>{const replay=()=>{if(video.current){video.current.currentTime=0;void video.current.play().catch(()=>notify('请点击播放继续'))}};const element=video.current;element?.addEventListener('replay-request',replay);return()=>element?.removeEventListener('replay-request',replay)},[resource]);
+  async function togglePip(){setPipError('');const element=video.current;if(!element||!pipSupported){setPipError('当前环境不支持画中画');return}try{if(document.pictureInPictureElement)await document.exitPictureInPicture();else await element.requestPictureInPicture()}catch{setPipError('画中画未能打开，请在视频开始播放后重试。')}}
+  async function changeQuality(value:VideoQuality){
+    captureProgress();void save();desiredTime.current=progress.current.ready?progress.current.time:desiredTime.current;
+    setQualityBusy(true);
+    try{await call(()=>window.desktop.videoQuality(value));if(!mounted.current)return;sessionRef.current.onPreferences({...sessionRef.current.preferences,quality:value})}catch(error){notify(errorMessage(error))}finally{if(mounted.current)setQualityBusy(false)}
+  }
   const [attempt, setAttempt] = useState(0);
   const automaticRetry = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const desiredTime = useRef(initialTime);
+  const pendingResume=useRef<number|null>(null);
+  const streamComplete=useRef(false);
   const progress = useRef({ time: 0, duration: episode.duration || 0, ready: false });
   const persisted = useRef<string>('');
   const callbacks = useRef({ onLibrary, notify });
@@ -314,7 +366,7 @@ function Player({ rate, onRateChange, series, episode, initialTime, onLibrary, o
     const element = video.current;
     if (element && progress.current.ready) {
       progress.current.time = element.currentTime;
-      if (Number.isFinite(element.duration) && element.duration > 0) progress.current.duration = element.duration;
+      progress.current.duration=playbackDuration(resourceRef.current,element.duration,progress.current.duration,streamComplete.current);
     }
     const state = { ...progress.current };
     if (!state.ready || state.duration <= 0) return progressWrites;
@@ -338,25 +390,56 @@ function Player({ rate, onRateChange, series, episode, initialTime, onLibrary, o
     return () => { mounted.current = false; window.clearInterval(timer); window.removeEventListener('beforeunload', beforeUnload); void save(); };
   }, [save]);
   useEffect(() => {
-    let live = true; setLoading(true); setError(''); setResource(null); setElapsed(0); setPlaying(false);
+    let live = true; streamComplete.current=false;pendingResume.current=null;setLoading(true); setError(''); setResource(null); setElapsed(0); setPlaying(false);
     const timer = window.setInterval(() => setElapsed(value => value + 1), 1000);
-    void call(() => window.desktop.playback(episode.id, attempt > 0)).then(value => { if (live) setResource(value); }).catch(error => { if (live) setError(errorMessage(error)); }).finally(() => { if (live) setLoading(false); window.clearInterval(timer); });
+    void (async()=>{await call(()=>window.desktop.videoQuality(quality));if(!live)return;return call(() => window.desktop.playback(episode.id, attempt > 0,quality))})().then(value => { if (live&&value) setResource(value); }).catch(error => { if (live) setError(errorMessage(error)); }).finally(() => { if (live) setLoading(false); window.clearInterval(timer); });
     return () => { live = false; window.clearInterval(timer); };
-  }, [episode.id, attempt]);
+  }, [episode.id, attempt,quality]);
+  useEffect(()=>{
+    if(!resource?.progressive)return;
+    let live=true,busy=false;
+    const isCurrent=()=>live&&pendingResume.current!==null&&resourceRef.current===resource;
+    const poll=async()=>{
+      if(busy||!isCurrent())return;busy=true;
+      try{
+        const complete=await completedResumeResource({episodeId:episode.id,url:resource.url,isCurrent,
+          getState:()=>call(()=>window.desktop.bufferState()),getPlayback:()=>call(()=>window.desktop.playback(episode.id,false,quality))});
+        if(complete&&isCurrent()){
+          desiredTime.current=pendingResume.current!;streamComplete.current=true;setResource(complete);
+        }
+      }catch{/* A failed completion probe leaves the visible manual start option available. */}
+      finally{busy=false}
+    };
+    const timer=window.setInterval(()=>void poll(),1000);void poll();
+    return()=>{live=false;window.clearInterval(timer)};
+  },[resource,episode.id,quality]);
+  useEffect(()=>{if(resource&&!resource.progressive&&pendingResume.current!==null)video.current?.load()},[resource]);
   const trackStyle = (value: number, max: number): CSSProperties => ({ '--range-progress': `${max > 0 ? Math.min(100, value / max * 100) : 0}%` } as CSSProperties);
   function captureProgress() {
     const element = video.current; if (!element || !progress.current.ready) return;
-    const total = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : progress.current.duration;
+    const total=playbackDuration(resource,element.duration,progress.current.duration,streamComplete.current);
     progress.current = { ready: true, time: element.currentTime, duration: total };
     setTime(element.currentTime); setDuration(total);
   }
   function retry() { captureProgress(); void save(); desiredTime.current = progress.current.ready ? progress.current.time : desiredTime.current; setAttempt(value => value + 1); }
+  function startFromBeginning(){
+    const element=video.current;if(!element)return;
+    session.onManualPlay();onManualStart();desiredTime.current=0;pendingResume.current=null;
+    progress.current={ready:true,time:0,duration:playbackDuration(resource,element.duration,episode.duration||0,streamComplete.current)};
+    element.currentTime=0;setTime(0);setWaiting(false);void element.play().catch(()=>notify('请点击播放继续'));
+  }
   async function togglePlay() {
     const element = video.current; if (!element || loading || error) return;
-    if (element.paused) { try { await element.play(); } catch { notify('点击播放，继续观看。'); } } else element.pause();
+    if (element.paused) { session.onManualPlay();onManualStart();if(pendingResume.current!==null){notify('正在缓存上次观看位置，请稍候。');return} try { await element.play(); } catch { notify('点击播放，继续观看。'); } } else element.pause();
   }
-  function seek(value: number) { if (!video.current || !progress.current.ready) return; video.current.currentTime = value; captureProgress(); }
-  function move(action?: () => void) { captureProgress(); void save(); action?.(); }
+  function isBuffered(element:HTMLVideoElement,value:number){for(let index=0;index<element.buffered.length;index++)if(value>=element.buffered.start(index)&&value<=element.buffered.end(index))return true;return false}
+  function restoreBuffered(){const element=video.current,target=pendingResume.current;if(!element)return;let through=0;for(let index=0;index<element.buffered.length;index++){if(element.buffered.start(index)>through+.2)break;through=element.buffered.end(index)}if(resource&&through>=resource.duration-.2&&resource.duration>0)streamComplete.current=true;if(target===null||!isBuffered(element,target))return;pendingResume.current=null;element.currentTime=target;progress.current.time=target;progress.current.ready=true;setTime(target);setWaiting(false);if(sessionRef.current.canContinue()&&!endOverlay)void element.play().catch(()=>setPlaying(false))}
+  function seek(value:number){
+    const element=video.current;if(!element||!progress.current.ready)return;
+    if(resource?.progressive&&!streamComplete.current&&!isBuffered(element,value)){notify('这一位置尚未缓存，请稍候再拖动。');return}
+    element.currentTime=value;captureProgress();
+  }
+  function move(action?: () => void) { captureProgress(); void save();if(action)session.onManualPlay();action?.(); }
   function toggleFullscreen() {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => notify('暂时无法退出全屏。'));
     else void container.current?.closest('.player-surface')?.requestFullscreen().catch(() => notify('暂时无法进入全屏。'));
@@ -374,19 +457,22 @@ function Player({ rate, onRateChange, series, episode, initialTime, onLibrary, o
     <div className="video-stage">
       {resource && !error && <video ref={video} src={resource.url} playsInline preload="auto" onClick={() => void togglePlay()} onDoubleClick={toggleFullscreen}
         onLoadedMetadata={() => {
-          const element = video.current!; const total = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : resource.duration;
-          const restored = resumeTime(desiredTime.current, total); element.currentTime = restored; element.volume = volume; element.muted = muted; element.playbackRate = rate;
-          progress.current = { ready: true, time: restored, duration: total }; setDuration(total); setTime(restored); setWaiting(false);
-          if(!backgrounded)void element.play().catch(() => setPlaying(false));
+          const element = video.current!; const total=playbackDuration(resource,element.duration,resource.duration,streamComplete.current);
+          const restored = resumeTime(desiredTime.current, total);const defer=!!resource.progressive&&restored>0&&!isBuffered(element,restored);pendingResume.current=defer?restored:null;if(!defer)element.currentTime = restored; element.volume = volume; element.muted = muted; element.playbackRate = rate;
+          progress.current = { ready: !defer, time: restored, duration: total }; setDuration(total); setTime(restored); setWaiting(defer);
+          if(!defer&&!endOverlay&&sessionRef.current.canContinue())void element.play().catch(() => setPlaying(false));
         }}
-        onTimeUpdate={captureProgress} onPlay={() => {if(backgrounded){video.current?.pause();return}setPlaying(true)}} onPause={() => { setPlaying(false); captureProgress(); void save(); }} onWaiting={() => setWaiting(true)} onCanPlay={() => setWaiting(false)} onPlaying={() => setWaiting(false)}
+        onProgress={restoreBuffered} onTimeUpdate={captureProgress} onPlay={() => {if(!sessionRef.current.canContinue()){video.current?.pause();return}setPlaying(true)}} onPause={() => { setPlaying(false); captureProgress(); void save(); }} onWaiting={() => setWaiting(true)} onCanPlay={() => {restoreBuffered();if(pendingResume.current===null)setWaiting(false)}} onPlaying={() => setWaiting(false)}
         onError={() => { captureProgress(); void save(); if (!automaticRetry.current) { automaticRetry.current = true; retry(); return; } setError('这一集暂时无法播放，请重新获取资源后再试。'); setPlaying(false); }}
-        onEnded={() => { captureProgress(); void save(); setPlaying(false); if (!backgrounded && autoNext && onNext) onEnded(); }} />}
-      {loading ? <div className="player-overlay"><span className="spinner" /><strong>{elapsed >= 5 ? '正在准备播放资源…' : '正在获取这一集…'}</strong><p>{elapsed >= 5 ? '正在准备完整单集，所需时间取决于网络和视频长度。' : `第${episode.order}集即将开始`}</p></div> : error ? <div className="player-overlay player-error" role="alert"><div className="state-icon"><Icon name="film" size={30} /></div><strong>播放遇到了一点问题</strong><p>{error}</p><button className="primary-button" onClick={retry}><Icon name="refresh" size={17} />重试当前集</button></div> : waiting ? <div className="buffering"><span className="spinner" /><span>正在缓冲…</span></div> : !playing && resource && <button className="big-play" onClick={() => void togglePlay()} aria-label="播放"><Icon name="play" size={33} /></button>}
+        onEnded={() => { captureProgress(); void save(); setPlaying(false); onEnded(); }} />}
+      {loading ? <div className="player-overlay"><span className="spinner" /><strong>{elapsed >= 5 ? '正在准备播放资源…' : '正在获取这一集…'}</strong><p>{elapsed >= 5 ? '正在解析并缓冲视频，准备好后开始播放。' : `第${episode.order}集即将开始`}</p></div> : error ? <div className="player-overlay player-error" role="alert"><div className="state-icon"><Icon name="film" size={30} /></div><strong>播放遇到了一点问题</strong><p>{error}</p><button className="primary-button" onClick={retry}><Icon name="refresh" size={17} />重试当前集</button></div> : waiting ? <div className="buffering"><span className="spinner" /><span>{pendingResume.current!==null?'正在缓存上次观看位置…':'正在缓冲…'}</span>{pendingResume.current!==null&&<button className="secondary-button" onClick={startFromBeginning}>从头播放</button>}</div> : !playing && resource && !endOverlay && <button className="big-play" onClick={() => void togglePlay()} aria-label="播放"><Icon name="play" size={33} /></button>}
+      {endOverlay}
     </div>
     <div className="player-controls"><input className="seek-range" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(time, duration || 1)} style={trackStyle(time, duration)} disabled={!resource || !!error || loading} onChange={event => seek(Number(event.target.value))} onPointerUp={() => void save()} onKeyUp={() => void save()} aria-label="播放进度" aria-valuetext={`${formatTime(time)} / ${formatTime(duration)}`} />
       <div className="fullscreen-cache">{buffer?`整剧缓存 ${buffer.ready}/${buffer.total} 集 · ${buffer.total?Math.floor(buffer.ready/buffer.total*100):0}%`:'正在读取缓存状态…'}<span>{cacheProgressText(buffer,series.episodes,bufferError)}</span></div>
-      <div className="control-row"><button className="control-button" onClick={() => void togglePlay()} disabled={!resource || !!error} aria-label={playing ? '暂停' : '播放'} title={playing ? '暂停（空格）' : '播放（空格）'}><Icon name={playing ? 'pause' : 'play'} size={19} /></button><button className="control-button" disabled={!onPrevious} onClick={() => move(onPrevious)} aria-label="上一集" title="上一集"><Icon name="previous" size={18} /></button><button className="control-button" disabled={!onNext} onClick={() => move(onNext)} aria-label="下一集" title="下一集"><Icon name="next" size={18} /></button><span className="time-label">{formatTime(time)}<i>/</i>{formatTime(duration)}</span><span className="controls-spacer" /><span className="definition-label" title="优先使用来源提供的最高可播放清晰度">{resource?.definition || ''}</span><div className="volume-controls"><button className="control-button" onClick={() => setMuted(value => !value)} aria-label={muted || !volume ? '取消静音' : '静音'} title="静音（M）"><Icon name={muted || !volume ? 'muted' : 'volume'} size={18} /></button><input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} style={trackStyle(muted ? 0 : volume, 1)} onChange={event => { setVolume(Number(event.target.value)); setMuted(false); }} aria-label="音量" /></div><select className="speed-select" value={rate} onChange={event => onRateChange(Number(event.target.value))} aria-label="播放倍速" title="播放倍速">{PLAYBACK_RATES.map(value => <option key={value} value={value}>{value === 1 ? '倍速 1×' : `${value}×`}</option>)}</select><button className="control-button" onClick={toggleFullscreen} aria-label="切换全屏" title="全屏（F）"><Icon name="fullscreen" size={18} /></button></div>
+      <div className="fullscreen-sleep"><SleepControl session={session}/></div>
+      {pipError&&<p className="player-inline-error" role="alert">{pipError}</p>}
+      <div className="control-row"><button className="control-button" onClick={() => void togglePlay()} disabled={!resource || !!error} aria-label={playing ? '暂停' : '播放'} title={playing ? '暂停（空格）' : '播放（空格）'}><Icon name={playing ? 'pause' : 'play'} size={19} /></button><button className="control-button" disabled={!onPrevious} onClick={() => move(onPrevious)} aria-label="上一集" title="上一集"><Icon name="previous" size={18} /></button><button className="control-button" disabled={!onNext} onClick={() => move(onNext)} aria-label="下一集" title="下一集"><Icon name="next" size={18} /></button><span className="time-label">{formatTime(time)}<i>/</i>{formatTime(duration)}</span><span className="controls-spacer" /><select className="quality-select" aria-label="画质上限" title="优先选不超过上限的最高档；没有更低档位时使用来源最低档" value={quality} disabled={qualityBusy||loading} onChange={event=>void changeQuality(event.target.value as VideoQuality)}><option value="auto">自动 · 最高画质</option>{qualityChoices(resource?.availableQualities).map(value=><option key={value} value={value}>{value}</option>)}{quality!=='auto'&&!qualityChoices(resource?.availableQualities).includes(quality)&&<option value={quality}>{quality} 上限 · 自动回退</option>}</select><span className="definition-label" title={[resource?.codec,resource?.size?`${(resource.size/1024/1024).toFixed(1)} MB`:'',resource?.progressive?'边缓存边播':''].filter(Boolean).join(' · ')}>{resource?.definition||''}</span><div className="volume-controls"><button className="control-button" onClick={() => setMuted(value => !value)} aria-label={muted || !volume ? '取消静音' : '静音'} title="静音（M）"><Icon name={muted || !volume ? 'muted' : 'volume'} size={18} /></button><input type="range" min="0" max="1" step="0.05" value={muted ? 0 : volume} style={trackStyle(muted ? 0 : volume, 1)} onChange={event => { setVolume(Number(event.target.value)); }} aria-label="音量" /></div><select className="speed-select" value={rate} onChange={event => onRateChange(Number(event.target.value))} aria-label="播放倍速" title="播放倍速">{PLAYBACK_RATES.map(value => <option key={value} value={value}>{value === 1 ? '倍速 1×' : `${value}×`}</option>)}</select><button className="control-button pip-button" onClick={()=>void togglePip()} disabled={!pipSupported||!resource||loading} aria-label={pip?'退出画中画':'画中画'} title={pipSupported?'画中画':'当前环境不支持画中画'}>▣</button><button className="control-button" onClick={toggleFullscreen} aria-label="切换全屏" title="全屏（F）"><Icon name="fullscreen" size={18} /></button></div>
     </div>
   </div>;
 }

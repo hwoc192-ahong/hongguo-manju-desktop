@@ -1,6 +1,6 @@
 import {safeJson} from './json';
 import { randomUUID } from 'node:crypto';
-import type { ApiTransport, Board, Catalog, Episode, Resource, Series, Work } from '../shared/types.ts';
+import type { ApiTransport, Board, Catalog, Episode, Resource, Series, Work,VideoQuality } from '../shared/types.ts';
 
 type RecordData = Record<string, any>;
 const ID = /^[1-9]\d{7,23}$/;
@@ -275,8 +275,9 @@ export class ContentProvider {
   }
 
   // Internal main-process API. Never forward this object to the renderer or persist it in history.
-  async getResource(episodeId: string): Promise<Resource> {
+  async getResource(episodeId: string,quality:VideoQuality='auto'): Promise<Resource> {
     identifier(episodeId, 'EPISODE');
+    if(quality!=='auto'&&!QUALITY_ORDER.includes(quality))fail('INVALID_QUALITY','画质选项无效。');
     const data = await this.api('/novel/player/video_model/v1/', { video_id: episodeId, content_type: 1,
       biz_param: { need_all_video_definition: true, video_platform: 3 } });
     let model = data.video_model;
@@ -299,7 +300,9 @@ export class ContentProvider {
       return rank(left.definition) - rank(right.definition);
     });
     if (!tracks.length) fail('UNSUPPORTED_CODEC', '此分集没有当前播放器支持的视频编码。');
-    const track = tracks[0];
+    const availableQualities=[...new Set(tracks.map(track=>text(track.definition)).filter(value=>QUALITY_ORDER.includes(value)))];
+    const ceiling=quality==='auto'?0:QUALITY_ORDER.indexOf(quality);
+    const track = quality==='auto'?tracks[0]:tracks.find(track=>QUALITY_ORDER.indexOf(text(track.definition))>=ceiling&&QUALITY_ORDER.includes(text(track.definition)))??tracks.at(-1)!;
     if (typeof track.encrypt !== 'boolean') fail('UNKNOWN_ENCRYPTION', '资源缺少明确的加密标记。');
     if (track.encrypt && track.encryption_method !== 'cenc-aes-ctr') fail('UNSUPPORTED_ENCRYPTION', '暂不支持此资源的加密格式。');
     if (track.encrypt && !text(track.spade_a)) fail('MISSING_MEDIA_KEY', '播放资源缺少必要的媒体参数。');
@@ -311,7 +314,7 @@ export class ContentProvider {
     if (!Number.isFinite(duration) || duration <= 0 || !Number.isSafeInteger(size) || size <= 0 || !text(track.definition) || !text(track.codec_type)) {
       fail('INVALID_RESOURCE_MODEL', '播放资源缺少完整时长或文件信息。');
     }
-    return { episodeId, duration, definition: track.definition, codec: track.codec_type, encrypted: track.encrypt,
+    return { episodeId, duration, definition: track.definition, codec: track.codec_type, encrypted: track.encrypt,availableQualities,
       ...(track.encrypt ? { spade: track.spade_a } : {}), url: url.href, size };
   }
 }

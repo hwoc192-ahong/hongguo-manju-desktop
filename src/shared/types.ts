@@ -3,11 +3,14 @@ export interface Work { id: string; title: string; cover: string; description: s
 export interface Series extends Work { episodes: Episode[] }
 export interface RelatedWork { work:Work; reason:string }
 export interface Recommendations { seasons:RelatedWork[]; similar:RelatedWork[]; message:string }
+export type VideoQuality='auto'|'1080p'|'720p'|'540p'|'480p'|'360p';
+export type CachePriority='high'|'normal'|'low';
+export interface CacheLimits {maxGiB:number;bandwidthMiB:number}
 export type Board = 'recommend' | 'hot' | 'new';
 export interface Catalog { items: Work[]; hasMore: boolean; nextOffset: number; label: string; source: string }
 export interface Progress { seriesId: string; episodeId: string; order: number; time: number; duration: number; updatedAt: number; work: Work }
 export interface Library { favorites: Work[]; history: Progress[] }
-export interface Playback { url: string; duration: number; definition: string; episodeId: string }
+export interface Playback { url: string; duration: number; definition: string; episodeId: string; progressive?:boolean;availableQualities?:string[];codec?:string;size?:number }
 export interface CacheActivity {
  stage:'resolving'|'downloading'|'waiting'|'processing'|'finalizing';
  percent?:number; transferred?:number; total?:number;
@@ -18,8 +21,8 @@ export interface BufferState {
  cachedBytes?:number;
  activities?:{episodeId:string;activity?:CacheActivity}[];
 }
-export interface CacheTask { series:Series; paused:boolean; createdAt:number; state:BufferState; watched:boolean;registered:boolean }
-export interface CacheOverview { directory:string; freeBytes:number; usedBytes:number; migrating:boolean; tasks:CacheTask[]; closeToTray:boolean; message:string; concurrency:number; bytesPerSecond:number }
+export interface CacheTask { series:Series; paused:boolean; createdAt:number; state:BufferState; watched:boolean;registered:boolean;priority?:CachePriority }
+export interface CacheOverview { directory:string; freeBytes:number; usedBytes:number; migrating:boolean; tasks:CacheTask[]; closeToTray:boolean; message:string; concurrency:number; bytesPerSecond:number;limits?:CacheLimits }
 export interface Result<T> { ok: boolean; data?: T; error?: { code: string; message: string } }
 export interface UpdateState {
  status: 'idle'|'checking'|'current'|'available'|'downloading'|'downloaded'|'installing'|'error'|'unsupported';
@@ -36,7 +39,9 @@ export interface DesktopApi {
  importShare(text: string): Promise<Result<Series>>;
  series(id: string): Promise<Result<Series>>;
  recommendations(id:string,refresh?:boolean):Promise<Result<Recommendations>>;
- playback(id: string, force?: boolean): Promise<Result<Playback>>;
+ playback(id: string, force?: boolean, quality?:VideoQuality): Promise<Result<Playback>>;
+ videoQuality(quality:VideoQuality):Promise<Result<boolean>>;
+ exportDiagnostics():Promise<Result<{saved:boolean}>>;
  bufferEpisodes(ids: string[]): Promise<Result<BufferState>>;
  bufferState(): Promise<Result<BufferState>>;
  retryBuffer(): Promise<Result<BufferState>>;
@@ -45,6 +50,8 @@ export interface DesktopApi {
  cacheAction(seriesId:string,action:'pause'|'resume'|'retry'|'remove'|'delete'):Promise<Result<CacheOverview>>;
  cacheDeleteWatched():Promise<Result<CacheOverview>>;
  cacheConcurrency(value:number):Promise<Result<CacheOverview>>;
+ cacheLimits(limits:CacheLimits):Promise<Result<CacheOverview>>;
+ cachePriority(seriesId:string,priority:CachePriority):Promise<Result<CacheOverview>>;
  cacheChooseDirectory():Promise<Result<CacheOverview>>;
  cacheOpenDirectory():Promise<Result<boolean>>;
  cacheCloseToTray(enabled:boolean):Promise<Result<CacheOverview>>;
@@ -58,6 +65,6 @@ export interface DesktopApi {
  installUpdate(): Promise<Result<UpdateState>>;
  onUpdate(listener: (state: UpdateState) => void): () => void;
 }
-export interface Resource { episodeId: string; duration: number; definition: string; codec: string; encrypted: boolean; spade?: string; url: string; size: number }
+export interface Resource { episodeId: string; duration: number; definition: string; codec: string; encrypted: boolean; spade?: string; url: string; size: number;availableQualities?:string[] }
 export interface ApiTransport { request(path: string, body?: unknown, extra?: Record<string,string|number|boolean>): Promise<any> }
 declare global { interface Window { desktop: DesktopApi } }
