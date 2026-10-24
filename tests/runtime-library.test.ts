@@ -70,3 +70,31 @@ test('旧签名进程的退出事件不能拒绝新进程中的重试请求',asy
   assert.ok(args);assert.ok(args.includes(`-Djava.io.tmpdir=${dir}`));
  }finally{signer.close();spawnMock.mock.restore();syncBuiltinESMExports()}
 }));
+
+test('更新关闭必须等到所有签名子进程实际退出，并拒绝迟到请求',async t=>fixture(async dir=>{
+ const children:Array<EventEmitter&{stdin:PassThrough;stdout:PassThrough;stderr:PassThrough;kill:()=>boolean}>=[];
+ const mock=t.mock.method(childProcess,'spawn',()=>{const child=Object.assign(new EventEmitter(),{stdin:new PassThrough(),stdout:new PassThrough(),stderr:new PassThrough(),kill:()=>true});children.push(child);return child});syncBuiltinESMExports();
+ const {Signer}=await import('../src/main/transport');const signer=new Signer('unused-runtime',dir);
+ try{
+  assert.equal(typeof signer.shutdown,'function','terminal shutdown must be implemented');
+  const first=assert.rejects(signer.sign('https://example.com',{}),{code:'CANCELLED'});signer.close();await first;
+  const retry=assert.rejects(signer.sign('https://example.com',{}),{code:'CANCELLED'});
+  let finished=false;const shutdown=signer.shutdown().then(()=>{finished=true});await retry;
+  assert.throws(()=>signer.sign('https://example.com',{}),{code:'CANCELLED'});assert.equal(children.length,2);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false,'kill is not proof of exit');
+  children[1].emit('close',0);await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false,'also wait for the previously closed worker');
+  children[0].emit('close',0);await shutdown;assert.equal(finished,true);
+ }finally{children.forEach(child=>child.emit('close',0));signer.close();mock.mock.restore();syncBuiltinESMExports()}
+}));
+
+test('签名进程无法结束时，关闭明确失败，不能开始覆盖安装',async t=>fixture(async dir=>{
+ const child=Object.assign(new EventEmitter(),{stdin:new PassThrough(),stdout:new PassThrough(),stderr:new PassThrough(),kill:()=>false});
+ const mock=t.mock.method(childProcess,'spawn',()=>child);syncBuiltinESMExports();
+ const {Signer}=await import('../src/main/transport');const signer=new Signer('unused-runtime',dir);
+ try{
+  assert.equal(typeof signer.shutdown,'function','terminal shutdown must be implemented');
+  const request=assert.rejects(signer.sign('https://example.com',{}),{code:'CANCELLED'});
+  await assert.rejects(signer.shutdown(20),{code:'SIGN_SHUTDOWN'});await request;
+  assert.throws(()=>signer.sign('https://example.com',{}),{code:'CANCELLED'});
+ }finally{child.emit('close',0);signer.close();mock.mock.restore();syncBuiltinESMExports()}
+}));

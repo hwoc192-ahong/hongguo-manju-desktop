@@ -4,9 +4,11 @@ import type {ApiTransport} from '../shared/types';import {AppError} from './erro
 type Reply={seq:number;headers?:Record<string,string>;error?:string};
 export class Signer {
  private process:ChildProcessWithoutNullStreams|null=null;private seq=0;private pending=new Map<number,{resolve:(headers:Record<string,string>)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+ private stopped=false;private stopping?:Promise<void>;private workers=new Map<ChildProcessWithoutNullStreams,Promise<void>>();
  constructor(private runtime:string,private workDirectory=path.join(tmpdir(),'hongguo-runtime')){}
- private start(){if(this.process)return;mkdirSync(this.workDirectory,{recursive:true});
+ private start(){if(this.stopped)throw new AppError('CANCELLED','应用正在退出，内容服务已停止');if(this.process)return;mkdirSync(this.workDirectory,{recursive:true});
   const child=spawn(path.join(this.runtime,'java/bin/java.exe'),['-Xmx384m',`-Djava.io.tmpdir=${this.workDirectory}`,'-cp',`${path.join(this.runtime,'classes')};${path.join(this.runtime,'dependencies.jar')}`,'app.hongguo.runtime.SignerBridge',path.join(this.runtime,'sdk')],{cwd:this.workDirectory,windowsHide:true,stdio:['pipe','pipe','pipe']});this.process=child;
+  this.workers.set(child,new Promise(resolve=>child.once('close',()=>{this.workers.delete(child);resolve()})));
   child.stderr.resume();const lines=createInterface({input:child.stdout});lines.on('line',line=>{
    if(line.length>100000)return;let reply:Reply;try{reply=JSON.parse(line)}catch{return}const pending=this.pending.get(reply.seq);if(!pending)return;clearTimeout(pending.timer);this.pending.delete(reply.seq);
    if(reply.error||!reply.headers?.['X-Argus']||!reply.headers?.['X-Gorgon'])pending.reject(new AppError('SIGN_FAILED','内容连接准备失败，请重试'));else pending.resolve(reply.headers);
@@ -19,6 +21,16 @@ export class Signer {
   });
  }
  close(){const child=this.process;this.process=null;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(new AppError('CANCELLED','内容服务已停止'))}this.pending.clear();child?.stdin.end();child?.kill()}
+ // Unlike a retryable close(), terminal shutdown forbids late requests from
+ // starting another worker and waits for OS exit before replacing runtime files.
+ shutdown(timeoutMs=10000):Promise<void>{
+  if(this.stopping)return this.stopping;this.stopped=true;this.close();
+  for(const child of this.workers.keys())child.kill();
+  this.stopping=new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>reject(new AppError('SIGN_SHUTDOWN','内容组件未能退出，已停止安装更新，请彻底退出软件后重试')),timeoutMs);
+   Promise.all(this.workers.values()).then(()=>{clearTimeout(timer);resolve()},error=>{clearTimeout(timer);reject(error)});
+  });return this.stopping;
+ }
 }
 export class Transport implements ApiTransport {
  private playerIdentity?:Promise<{device_id:string;iid:string}>;

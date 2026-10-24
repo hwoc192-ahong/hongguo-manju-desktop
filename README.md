@@ -2,7 +2,9 @@
 
 在 Windows 电脑上找漫剧、导入分享链接，并接着上次的进度观看。使用 Electron + React + TypeScript 开发，支持 Windows 10/11 x64。
 
-**[下载 Windows x64 安装包 · 0.5.0 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.5.0/Hongguo-Manju-0.5.0-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.5.0) · [安装指南](docs/installation.md)
+**[下载 Windows x64 安装包 · 0.5.1 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.5.1/Hongguo-Manju-0.5.1-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.5.1) · [安装指南](docs/installation.md)
+
+0.5.1 修复更新前后台组件未完全退出的问题，保留完整缓存、有效下载断点和个人记录。遇到旧版卸载失败时，从托盘退出软件后使用新版安装包覆盖原目录，无需清空全部缓存。[修复说明](docs/releases/v0.5.1.md)
 
 > 本项目是个人维护的第三方非官方客户端，与红果官方及其运营方没有隶属、合作或授权关系。相关品牌、作品、封面及其他内容的权利归各自权利方所有。
 
@@ -80,13 +82,13 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 | 项目 | 当前状态 |
 | --- | --- |
 | 系统 | Windows 10 / 11 x64；暂无 macOS、Linux 或 Windows ARM64 安装包 |
-| 版本 | 0.5.0，测试版（Pre-release） |
-| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.5.0/Hongguo-Manju-0.5.0-Windows-x64.exe) |
+| 版本 | 0.5.1，测试版（Pre-release） |
+| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.5.1/Hongguo-Manju-0.5.1-Windows-x64.exe) |
 | 源码 | 可通过本页绿色 Code 按钮 → Download ZIP 下载 |
 | 运行依赖 | 源码包不含完整运行组件，仅下载 ZIP 无法直接观看 |
 | 手机与账号 | 完整个人构建无需手机或模拟器；不接入手机账号与跨设备同步 |
 
-普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.5.0，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
+普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.5.1，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
 
 ## 功能
 
@@ -108,7 +110,7 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 
 ## 安装使用
 
-从 [0.5.0 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.5.0) 下载 `Hongguo-Manju-0.5.0-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
+从 [0.5.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.5.1) 下载 `Hongguo-Manju-0.5.1-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
 
 安装包包含精简 Java、签名桥接和 FFmpeg，不需要另行安装 Node、Python、Java、手机 APP 或 Android 模拟器，也不需要手动启动服务。
 
