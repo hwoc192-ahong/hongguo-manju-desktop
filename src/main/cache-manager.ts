@@ -1,0 +1,58 @@
+import {mkdir,readFile,writeFile,rename,copyFile} from 'node:fs/promises';
+import {constants} from 'node:fs';import path from 'node:path';import {randomUUID} from 'node:crypto';
+import type {Series,CacheOverview} from '../shared/types';import {MediaCache} from './media';import {validId} from './library';import {AppError} from './errors';
+
+interface Task {series:Series;paused:boolean;createdAt:number}
+interface Settings {version:1;directory:string;closeToTray:boolean;tasks:Task[]}
+function cleanSeries(series:Series):Series{
+ if(!series||!validId(series.id)||typeof series.title!=='string'||!series.title.trim()||!Array.isArray(series.episodes)||!series.episodes.length||series.episodes.length>5000||series.episodes.some((e,i)=>!validId(e.id)||e.order!==i+1)||new Set(series.episodes.map(e=>e.id)).size!==series.episodes.length)throw new AppError('CACHE_SERIES','缓存作品信息或剧集列表无效');
+ return {id:series.id,title:series.title.slice(0,200),cover:typeof series.cover==='string'&&/^https?:\/\//.test(series.cover)?series.cover.slice(0,2048):'',description:'',total:series.episodes.length,episodes:series.episodes.map(e=>({id:e.id,order:e.order}))};
+}
+function parse(source:string,profile:string):Settings{
+ const raw=JSON.parse(source);if(raw?.version!==1||typeof raw.directory!=='string'||!path.isAbsolute(raw.directory)||typeof raw.closeToTray!=='boolean'||!Array.isArray(raw.tasks)||raw.tasks.length>100)throw Error('INVALID_SETTINGS');
+ const directory=path.resolve(raw.directory),original=path.resolve(profile,'media-cache');
+ if(directory!==original&&path.basename(directory)!=='HongguoManjuCache')throw Error('INVALID_DIRECTORY');
+ const tasks:Task[]=raw.tasks.map((task:any)=>{if(typeof task.paused!=='boolean'||!Number.isFinite(task.createdAt))throw Error('INVALID_TASK');return {series:cleanSeries(task.series),paused:task.paused,createdAt:task.createdAt}});
+ if(new Set(tasks.map(task=>task.series.id)).size!==tasks.length)throw Error('DUPLICATE_TASK');
+ return {version:1,directory,closeToTray:raw.closeToTray,tasks};
+}
+export class CacheManager {
+ private value:Settings;private pending:Promise<unknown>=Promise.resolve();private message='';private migrating=false;
+ constructor(private profile:string,private media:MediaCache){this.value={version:1,directory:media.location,closeToTray:true,tasks:[]}}
+ static async directory(profile:string){try{return parse(await readFile(path.join(profile,'cache-settings.json'),'utf8'),profile).directory}catch{return path.join(profile,'media-cache')}}
+ async init(){
+  const file=path.join(this.profile,'cache-settings.json');await mkdir(this.profile,{recursive:true});
+  try{this.value=parse(await readFile(file,'utf8'),this.profile)}catch(error:any){
+   if(error.code!=='ENOENT'){
+    try{await copyFile(file,file+'.corrupt-'+randomUUID(),constants.COPYFILE_EXCL);this.message='缓存设置已损坏，已备份原文件。请重新添加缓存任务；已完成媒体保留。'}
+    catch{throw new AppError('CACHE_SETTINGS','缓存设置无法读取或备份，请检查应用数据目录权限')}
+   }
+  }
+  this.sync();
+ }
+ get closeToTray(){return this.value.closeToTray}
+ private sync(){this.media.setBackgroundGroups(this.value.tasks.map(task=>({id:task.series.id,ids:task.series.episodes.map(e=>e.id),paused:task.paused})))}
+ private async save(value:Settings){const file=path.join(this.profile,'cache-settings.json');try{await writeFile(file+'.tmp',JSON.stringify(value),'utf8');await rename(file+'.tmp',file)}catch{throw new AppError('CACHE_SETTINGS','缓存任务保存失败，请检查磁盘空间及目录权限')}}
+ private mutate(fn:(draft:Settings)=>void){const operation=this.pending.then(async()=>{const draft=structuredClone(this.value);fn(draft);await this.save(draft);this.value=draft;this.sync();return this.snapshot()});this.pending=operation.catch(()=>{});return operation}
+ async snapshot():Promise<CacheOverview>{
+  let freeBytes=0;try{freeBytes=await this.media.freeBytes()}catch{}
+  return {directory:this.media.location,freeBytes,usedBytes:this.media.usedBytes,migrating:this.migrating,closeToTray:this.closeToTray,message:this.message,tasks:this.value.tasks.map(task=>({...structuredClone(task),state:this.media.stateFor(task.series.episodes.map(e=>e.id))}))};
+ }
+ add(series:Series){const clean=cleanSeries(series);return this.mutate(draft=>{const task=draft.tasks.find(task=>task.series.id===clean.id);if(task){task.series=clean;return}if(draft.tasks.length>=100)throw new AppError('CACHE_LIMIT','最多添加 100 部缓存作品，请先移除已不需要的任务');draft.tasks.push({series:clean,paused:false,createdAt:Date.now()})})}
+ async action(id:string,action:'pause'|'resume'|'retry'|'remove'){
+  if(!validId(id)||!['pause','resume','retry','remove'].includes(action))throw new AppError('INVALID_INPUT','缓存操作无效');
+  const result=await this.mutate(draft=>{const task=draft.tasks.find(task=>task.series.id===id);if(!task)throw new AppError('CACHE_TASK','缓存任务不存在');if(action==='remove')draft.tasks=draft.tasks.filter(item=>item.series.id!==id);else task.paused=action==='pause'});
+  if(action==='retry'||action==='resume'){const task=this.value.tasks.find(task=>task.series.id===id);this.media.retryBuffer(task?.series.episodes.map(e=>e.id));return this.snapshot()}
+  return result;
+ }
+ setCloseToTray(enabled:boolean){if(typeof enabled!=='boolean')throw new AppError('INVALID_INPUT','关闭窗口设置无效');return this.mutate(draft=>{draft.closeToTray=enabled})}
+ migrate(destination:string){
+  if(this.migrating)return Promise.reject(new AppError('CACHE_BUSY','缓存正在迁移，请等待完成'));this.migrating=true;
+  const operation=this.pending.then(async()=>{
+   const draft={...this.value,directory:path.resolve(destination)};
+   if(path.basename(draft.directory)!=='HongguoManjuCache')throw new AppError('CACHE_PATH','请选择应用专用缓存文件夹');
+   await this.media.relocate(draft.directory,()=>this.save(draft));this.value=draft;this.message='缓存目录已切换。原目录文件已保留，可确认新目录播放正常后自行清理。';return this.snapshot();
+  }).finally(()=>{this.migrating=false});this.pending=operation.catch(()=>{});return operation;
+ }
+ async flush(){await this.pending}
+}

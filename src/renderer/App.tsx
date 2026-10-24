@@ -1,13 +1,15 @@
 import {readPlaybackRate,savePlaybackRate,PLAYBACK_RATES} from './player-preferences';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react';
-import type { Board, BufferState, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
+import type { Board, BufferState, CacheOverview, Catalog, Episode, Library, Playback, Progress, Result, Series, Work } from '../shared/types';
 import { formatTime, resumeTime, selectEpisode } from './playback-state';
 import {UpdateControl} from './UpdateControl';
 import {PlayerSurface} from './PlayerSurface';
 import {CacheProgress,cacheProgressText} from './CacheProgress';
+import {CacheCenter} from './CacheCenter';
 
-type View = 'discover' | 'favorites' | 'history' | 'search';
+let backgrounded=false;
+type View = 'discover' | 'favorites' | 'history' | 'search' | 'cache';
 type IconName = 'home' | 'heart' | 'clock' | 'search' | 'plus' | 'play' | 'pause' | 'back' | 'refresh' | 'close' | 'next' | 'previous' | 'volume' | 'muted' | 'fullscreen' | 'check' | 'arrow' | 'film' | 'link';
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" /></>,
@@ -100,6 +102,11 @@ export default function App() {
   const [importError, setImportError] = useState('');
   const [toast, setToast] = useState('');
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [cache,setCache]=useState<CacheOverview|null>(null);
+  const [cacheError,setCacheError]=useState('');
+  const refreshCache=useCallback(async()=>{try{setCache(await call(()=>window.desktop.cacheState()));setCacheError('')}catch(error){setCacheError(errorMessage(error))}},[]);
+  useEffect(()=>{let live=true,timer:number;const poll=async()=>{await refreshCache();if(live)timer=window.setTimeout(()=>void poll(),1000)};void poll();return()=>{live=false;window.clearTimeout(timer)}},[refreshCache]);
+  useEffect(()=>window.desktop.onBackground?.(hidden=>{backgrounded=hidden;if(hidden)document.querySelector('video')?.pause()}),[]);
   const requestId = useRef(0);
   const scrollArea = useRef<HTMLDivElement>(null);
   const notify = useCallback((message: string) => setToast(message), []);
@@ -194,9 +201,10 @@ export default function App() {
         <button className="top-import" aria-label="导入分享" onClick={() => { setImportError(''); setImportOpen(true); }}><Icon name="link" size={17} /><span>导入链接</span></button>
         <nav className="library-nav" aria-label="个人记录"><button className={view === 'favorites' && !activeId ? 'active' : ''} aria-label="我的收藏" onClick={() => navigate('favorites')}>收藏</button><button className={view === 'history' && !activeId ? 'active' : ''} aria-label="观看历史" onClick={() => navigate('history')}>历史</button></nav>
         <UpdateControl/>
+        <button className={`cache-nav ${view==='cache'&&!activeId?'active':''}`} onClick={()=>navigate('cache')} aria-label="缓存中心">缓存{cache?.tasks.some(task=>!task.paused&&task.state.status!=='complete')&&<i/>}</button>
       </header>
       <main className="content-scroll" ref={scrollArea}>
-        {activeId ? <Detail rate={rate} onRateChange={changeRate} key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : <div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
+        {activeId ? <Detail rate={rate} onRateChange={changeRate} key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : view==='cache'?<CacheCenter state={cache} error={cacheError} onRefresh={()=>void refreshCache()} onOpen={setActiveId} favorites={library.favorites}/>:<div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
           {view !== 'discover' && <div className="page-heading"><div><h1>{heading}</h1><p>{subheading}</p></div>{view === 'search' && <button className="refresh-button" onClick={() => void loadCatalog()} disabled={loading}><Icon name="refresh" size={17} />刷新</button>}</div>}
           {spotlight && <section className="spotlight" aria-label="作品推荐">
             <Cover work={spotlight} className="spotlight-art" />
@@ -269,6 +277,7 @@ function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favori
     {loading ? <div className="center-loading"><span className="spinner" /><p>正在打开这个故事…</p></div> : error ? <ErrorState message={error} onRetry={() => setReload(value => value + 1)} /> : series && <>
       <div className="detail-heading"><div><span className="eyebrow">NOW SHOWING</span><h1>{series.title}</h1><p>{series.categories?.join(' · ')}{series.categories?.length ? ' · ' : ''}{series.total ? `全${series.total}集` : `${series.episodes.length}集`}</p></div><button className={`favorite-button ${favorite ? 'is-favorite' : ''}`} disabled={favoriteBusy} onClick={() => onFavorite(series)}><Icon name="heart" size={18} />{favorite ? '已收藏' : '收藏漫剧'}</button></div>
       <div className="watch-layout"><section className="watch-main">
+        {episode&&<div className="background-cache-entry"><span>当前作品可加入队列，切换页面后继续缓存</span><button className="secondary-button" onClick={()=>void call(()=>window.desktop.cacheAdd(series.id)).then(()=>notify('已加入后台缓存，可在顶部“缓存”查看进度和托盘设置。')).catch(error=>notify(errorMessage(error)))}>加入后台缓存</button></div>}
         {episode && <CacheProgress state={buffer} episodes={series.episodes} error={bufferError} onRetry={()=>setBufferRetry(value=>value+1)} />}
         {episode ? <PlayerSurface episodeId={episode.id}><Player buffer={buffer} bufferError={bufferError} rate={rate} onRateChange={onRateChange} key={episode.id} series={series} episode={episode} initialTime={library.history.find(item => item.seriesId === id && item.episodeId === episode.id)?.time || 0} onLibrary={onLibrary} onPrevious={index > 0 ? () => setEpisode(series.episodes[index - 1]) : undefined} onNext={index < series.episodes.length - 1 ? next : undefined} autoNext={autoNext} onEnded={next} notify={notify} /></PlayerSurface> : <div className="unavailable-player"><Icon name="film" size={34} /><h3>这部漫剧暂时没有可播放剧集</h3><button className="secondary-button" onClick={() => setReload(value => value + 1)}>重新获取剧集</button></div>}
         <div className="now-playing"><div><span className="playing-dot" /><strong>{episode ? `第${episode.order}集` : '剧集待更新'}</strong><span>{episode?.title && episode.title !== `第${episode.order}集` ? episode.title : series.title}</span></div><label className="toggle-label"><input type="checkbox" checked={autoNext} onChange={event => setAutoNext(event.target.checked)} /><span className="toggle-track" />自动连播</label></div>
@@ -361,16 +370,16 @@ function Player({ rate, onRateChange, series, episode, initialTime, onLibrary, o
   useEffect(() => { if (video.current) { video.current.volume = volume; video.current.muted = muted; video.current.playbackRate = rate; } }, [volume, muted, rate, resource]);
   return <div className="player" ref={container} tabIndex={0} onKeyDown={keyboard} aria-label={`第${episode.order}集播放器`}>
     <div className="video-stage">
-      {resource && !error && <video ref={video} src={resource.url} playsInline autoPlay preload="auto" onClick={() => void togglePlay()} onDoubleClick={toggleFullscreen}
+      {resource && !error && <video ref={video} src={resource.url} playsInline preload="auto" onClick={() => void togglePlay()} onDoubleClick={toggleFullscreen}
         onLoadedMetadata={() => {
           const element = video.current!; const total = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : resource.duration;
           const restored = resumeTime(desiredTime.current, total); element.currentTime = restored; element.volume = volume; element.muted = muted; element.playbackRate = rate;
           progress.current = { ready: true, time: restored, duration: total }; setDuration(total); setTime(restored); setWaiting(false);
-          void element.play().catch(() => setPlaying(false));
+          if(!backgrounded)void element.play().catch(() => setPlaying(false));
         }}
-        onTimeUpdate={captureProgress} onPlay={() => setPlaying(true)} onPause={() => { setPlaying(false); captureProgress(); void save(); }} onWaiting={() => setWaiting(true)} onCanPlay={() => setWaiting(false)} onPlaying={() => setWaiting(false)}
+        onTimeUpdate={captureProgress} onPlay={() => {if(backgrounded){video.current?.pause();return}setPlaying(true)}} onPause={() => { setPlaying(false); captureProgress(); void save(); }} onWaiting={() => setWaiting(true)} onCanPlay={() => setWaiting(false)} onPlaying={() => setWaiting(false)}
         onError={() => { captureProgress(); void save(); if (!automaticRetry.current) { automaticRetry.current = true; retry(); return; } setError('这一集暂时无法播放，请重新获取资源后再试。'); setPlaying(false); }}
-        onEnded={() => { captureProgress(); void save(); setPlaying(false); if (autoNext && onNext) onEnded(); }} />}
+        onEnded={() => { captureProgress(); void save(); setPlaying(false); if (!backgrounded && autoNext && onNext) onEnded(); }} />}
       {loading ? <div className="player-overlay"><span className="spinner" /><strong>{elapsed >= 5 ? '正在准备播放资源…' : '正在获取这一集…'}</strong><p>{elapsed >= 5 ? '正在准备完整单集，所需时间取决于网络和视频长度。' : `第${episode.order}集即将开始`}</p></div> : error ? <div className="player-overlay player-error" role="alert"><div className="state-icon"><Icon name="film" size={30} /></div><strong>播放遇到了一点问题</strong><p>{error}</p><button className="primary-button" onClick={retry}><Icon name="refresh" size={17} />重试当前集</button></div> : waiting ? <div className="buffering"><span className="spinner" /><span>正在缓冲…</span></div> : !playing && resource && <button className="big-play" onClick={() => void togglePlay()} aria-label="播放"><Icon name="play" size={33} /></button>}
     </div>
     <div className="player-controls"><input className="seek-range" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(time, duration || 1)} style={trackStyle(time, duration)} disabled={!resource || !!error || loading} onChange={event => seek(Number(event.target.value))} onPointerUp={() => void save()} onKeyUp={() => void save()} aria-label="播放进度" aria-valuetext={`${formatTime(time)} / ${formatTime(duration)}`} />

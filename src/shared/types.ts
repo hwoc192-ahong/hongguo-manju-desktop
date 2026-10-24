@@ -13,7 +13,11 @@ export interface CacheActivity {
 export interface BufferState {
  status:'idle'|'preparing'|'complete'|'partial'|'paused';
  total:number; ready:number; failed:number; activeId?:string; active?:CacheActivity; message:string;
+ cachedBytes?:number;
+ activities?:{episodeId:string;activity?:CacheActivity}[];
 }
+export interface CacheTask { series:Series; paused:boolean; createdAt:number; state:BufferState }
+export interface CacheOverview { directory:string; freeBytes:number; usedBytes:number; migrating:boolean; tasks:CacheTask[]; closeToTray:boolean; message:string }
 export interface Result<T> { ok: boolean; data?: T; error?: { code: string; message: string } }
 export interface UpdateState {
  status: 'idle'|'checking'|'current'|'available'|'downloading'|'downloaded'|'installing'|'error'|'unsupported';
@@ -33,6 +37,13 @@ export interface DesktopApi {
  bufferEpisodes(ids: string[]): Promise<Result<BufferState>>;
  bufferState(): Promise<Result<BufferState>>;
  retryBuffer(): Promise<Result<BufferState>>;
+ cacheState():Promise<Result<CacheOverview>>;
+ cacheAdd(seriesId:string):Promise<Result<CacheOverview>>;
+ cacheAction(seriesId:string,action:'pause'|'resume'|'retry'|'remove'):Promise<Result<CacheOverview>>;
+ cacheChooseDirectory():Promise<Result<CacheOverview>>;
+ cacheOpenDirectory():Promise<Result<boolean>>;
+ cacheCloseToTray(enabled:boolean):Promise<Result<CacheOverview>>;
+ onBackground(listener:(background:boolean)=>void):()=>void;
  library(): Promise<Result<Library>>;
  favorite(work: Work, enabled: boolean): Promise<Result<Library>>;
  progress(progress: Omit<Progress,'updatedAt'>): Promise<Result<Library>>;
