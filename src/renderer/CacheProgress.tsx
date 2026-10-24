@@ -11,6 +11,7 @@ export function cacheProgressText(state:BufferState|null,episodes:Episode[],erro
  const activity=state.active;
  if(activity?.stage==='downloading')return `${label} · 下载 ${activity.percent??0}%（${((activity.transferred??0)/1048576).toFixed(1)} / ${((activity.total??0)/1048576).toFixed(1)} MiB）`;
  if(activity?.stage==='processing')return `${label} · 处理 ${activity.percent??0}%`;
+ if(activity?.stage==='waiting')return `${label} · 下载完成，等待视频处理`;
  if(activity?.stage==='finalizing')return `${label} · 正在保存`;
  return `${label} · 正在获取资源`;
 }

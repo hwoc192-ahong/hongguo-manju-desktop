@@ -7,6 +7,7 @@ import {UpdateControl} from './UpdateControl';
 import {PlayerSurface} from './PlayerSurface';
 import {CacheProgress,cacheProgressText} from './CacheProgress';
 import {CacheCenter} from './CacheCenter';
+import {Recommendations} from './Recommendations';
 
 let backgrounded=false;
 type View = 'discover' | 'favorites' | 'history' | 'search' | 'cache';
@@ -204,7 +205,7 @@ export default function App() {
         <button className={`cache-nav ${view==='cache'&&!activeId?'active':''}`} onClick={()=>navigate('cache')} aria-label="缓存中心">缓存{cache?.tasks.some(task=>!task.paused&&task.state.status!=='complete')&&<i/>}</button>
       </header>
       <main className="content-scroll" ref={scrollArea}>
-        {activeId ? <Detail rate={rate} onRateChange={changeRate} key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : view==='cache'?<CacheCenter state={cache} error={cacheError} onRefresh={()=>void refreshCache()} onOpen={setActiveId} favorites={library.favorites}/>:<div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
+        {activeId ? <Detail onOpen={setActiveId} rate={rate} onRateChange={changeRate} key={activeId} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : view==='cache'?<CacheCenter state={cache} error={cacheError} onRefresh={()=>void refreshCache()} onOpen={setActiveId} favorites={library.favorites}/>:<div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
           {view !== 'discover' && <div className="page-heading"><div><h1>{heading}</h1><p>{subheading}</p></div>{view === 'search' && <button className="refresh-button" onClick={() => void loadCatalog()} disabled={loading}><Icon name="refresh" size={17} />刷新</button>}</div>}
           {spotlight && <section className="spotlight" aria-label="作品推荐">
             <Cover work={spotlight} className="spotlight-art" />
@@ -228,7 +229,7 @@ export default function App() {
   </div>;
 }
 
-function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favoriteBusy, onBack, notify }: { rate: number; onRateChange: (rate: number) => void; id: string; library: Library; onLibrary: (library: Library) => void; onFavorite: (work: Work) => void; favoriteBusy: boolean; onBack: () => void; notify: (message: string) => void }) {
+function Detail({ onOpen, rate, onRateChange, id, library, onLibrary, onFavorite, favoriteBusy, onBack, notify }: { onOpen:(id:string)=>void; rate: number; onRateChange: (rate: number) => void; id: string; library: Library; onLibrary: (library: Library) => void; onFavorite: (work: Work) => void; favoriteBusy: boolean; onBack: () => void; notify: (message: string) => void }) {
   const [series, setSeries] = useState<Series | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -283,6 +284,7 @@ function Detail({ rate, onRateChange, id, library, onLibrary, onFavorite, favori
         <div className="now-playing"><div><span className="playing-dot" /><strong>{episode ? `第${episode.order}集` : '剧集待更新'}</strong><span>{episode?.title && episode.title !== `第${episode.order}集` ? episode.title : series.title}</span></div><label className="toggle-label"><input type="checkbox" checked={autoNext} onChange={event => setAutoNext(event.target.checked)} /><span className="toggle-track" />自动连播</label></div>
         <section className="story-info"><Cover work={series} /><div><h2>关于这部漫剧</h2><div className="category-chips">{series.categories?.map(category => <span key={category}>{category}</span>)}</div><p>{series.description || '暂无作品简介。'}</p></div></section>
       </section><aside className="episode-panel"><div className="episode-heading"><div><h2>选集</h2><span>{series.episodes.length}集可播放</span></div><button onClick={() => setSortDescending(value => !value)}>{sortDescending ? '倒序 ↓' : '正序 ↑'}</button></div><div className="episode-grid">{episodes.map(item => <button key={item.id} className={item.id === episode?.id ? 'current' : ''} onClick={() => setEpisode(item)} title={item.title || `第${item.order}集`} aria-label={`播放第${item.order}集`} aria-current={item.id === episode?.id ? 'true' : undefined}>{item.id === episode?.id && <span className="equalizer"><i /><i /><i /></span>}{item.order}</button>)}</div></aside></div>
+      <Recommendations id={id} onOpen={onOpen} renderCard={(work,open)=><WorkCard work={work} onOpen={open}/>}/>
     </>}
   </div>;
 }

@@ -13,13 +13,13 @@ execFileSync(path.resolve('runtime-bundle/ffmpeg.exe'),['-y','-f','lavfi','-i','
 const provider=`
 const fs=require('node:fs/promises'),http=require('node:http');
 export class ProviderError extends Error{}
-const works=Array.from({length:3},(_,n)=>({id:String(7695370827507698700n+BigInt(n)),title:['云海来信','星河旅人','长街旧梦'][n]+' · 本地验收',cover:'',description:'本地生成测试视频，不是线上作品',total:8,episodes:Array.from({length:8},(_,i)=>({id:String(7695386527160863700n+BigInt(n*10+i)),order:i+1,duration:10}))}));
+const works=Array.from({length:3},(_,n)=>({id:String(7695370827507698700n+BigInt(n)),title:['云海来信第一季','云海来信第二季','长街旧梦'][n],cover:'',description:'末世冒险 · 本地生成测试视频，不是线上作品',categories:['冒险'],total:8,episodes:Array.from({length:8},(_,i)=>({id:String(7695386527160863700n+BigInt(n*10+i)),order:i+1,duration:10}))}));
 let offline=false,fail=true,active=0,maxActive=0,requests=[],server;
 const ready=(async()=>{const bytes=await fs.readFile(${JSON.stringify(video)});server=http.createServer((req,res)=>{
  if(req.url.startsWith('/cover')){const n=Number(req.url.match(/\\d/)[0]);res.setHeader('content-type','image/svg+xml');res.end('<svg xmlns="http://www.w3.org/2000/svg" width="220" height="320"><rect width="220" height="320" fill="'+['#7d8e9c','#776b89','#b28a68'][n]+'"/><circle cx="110" cy="90" r="45" fill="#f5ead5" opacity=".8"/><path d="M0 250L90 130L150 220L220 160V320H0" fill="#293f4a"/><text x="110" y="290" text-anchor="middle" fill="white" font-size="25">本地验收</text></svg>');return;}
  requests.push(req.url.slice(1));if(offline||(fail&&req.url==='/'+works[1].episodes[2].id)){res.writeHead(503);res.end();return;}
  active++;maxActive=Math.max(maxActive,active);res.once('close',()=>active--);res.writeHead(200,{'content-type':'video/mp4'});const half=Math.ceil(bytes.length/2);res.write(bytes.subarray(0,half));setTimeout(()=>res.end(bytes.subarray(half)),1500);
- });await new Promise(r=>server.listen(0,'127.0.0.1',r));for(let i=0;i<works.length;i++)works[i].cover='http://127.0.0.1:'+server.address().port+'/cover'+i+'.svg';return bytes;})();
+ });await new Promise(r=>server.listen(0,'127.0.0.1',r));for(let i=0;i<works.length;i++)works[i].cover='data:image/svg+xml;base64,'+Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="220" height="320"><rect width="220" height="320" fill="'+['#7d8e9c','#776b89','#b28a68'][i]+'"/><circle cx="110" cy="90" r="45" fill="#f5ead5"/><path d="M0 250L90 130L150 220L220 160V320H0" fill="#293f4a"/><text x="110" y="290" text-anchor="middle" fill="white" font-size="25">本地验收</text></svg>').toString('base64');return bytes;})();
 global.qa=()=>({requests,maxActive,active});global.offline=()=>{offline=true};global.recover=()=>{fail=false};
 export class ContentProvider{
  constructor(){}
@@ -38,7 +38,17 @@ const state=async()=>{const result=await page.evaluate(()=>window.desktop.cacheS
 const until=async check=>{for(let i=0;i<1000;i++){snapshot=await state();if(check(snapshot))return snapshot;await page.waitForTimeout(60)}assert.fail('cache center QA timeout')};
 try{
  await launch();
+ assert.equal((await state()).concurrency,4);
+ await page.getByRole('combobox',{name:'缓存并行数'}).selectOption('6');await until(s=>s.concurrency===6);
+ await page.getByRole('combobox',{name:'缓存并行数'}).selectOption('4');await until(s=>s.concurrency===4);
+ events.push('cache center defaults to four and user changes concurrency through production IPC');
  await page.getByRole('button',{name:'发现',exact:true}).click();await page.locator('.work-card').first().click();await page.locator('.series-buffer').getByText(/第 1 集 · 下载/).waitFor();
+ await page.locator('.playback-recommendations .work-card').filter({hasText:'云海来信第二季'}).waitFor({timeout:30000});
+ assert.equal(await page.locator('.related-grid').first().locator('.work-card').first().innerText().then(t=>t.includes('云海来信第二季')),true);
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1400,1200));await page.waitForTimeout(200);await page.locator('.playback-recommendations').evaluate(el=>{const scroller=document.querySelector('.content-scroll');scroller.scrollTop+=el.getBoundingClientRect().top-scroller.getBoundingClientRect().top-30});await page.waitForTimeout(200);await page.screenshot({path:path.join(output,'recommendations.png')});
+ await page.locator('.playback-recommendations .work-card').filter({hasText:'云海来信第二季'}).click();await page.locator('.detail-heading h1').filter({hasText:'云海来信第二季'}).waitFor();
+ await page.getByRole('button',{name:'发现',exact:true}).click();await page.locator('.work-card').first().click();
+ events.push('playback page prioritizes title-matched second season then topic-related works; recommendation opens correct series');
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].close());
  await page.waitForFunction(()=>{const v=document.querySelector('video');return v&&v.readyState>=1},{},{polling:100});
  assert.equal(await page.locator('video').evaluate(v=>v.paused&&v.currentTime===0),true);
@@ -62,8 +72,8 @@ try{
  await until(s=>s.tasks[1].state.failed>0);await app.evaluate(()=>global.recover());
  await middle.getByRole('button',{name:'重试失败',exact:true}).click();
  await until(s=>s.tasks.every(t=>t.state.status==='complete'));
- const requests=await app.evaluate(()=>global.qa());assert.ok(requests.maxActive<=2);assert.equal(snapshot.tasks.reduce((sum,t)=>sum+t.state.ready,0),24);
- events.push('resume and scoped retry prepare all 24 episodes; global media concurrency never exceeds two');
+ const requests=await app.evaluate(()=>global.qa());assert.ok(requests.maxActive<=6);assert.ok(requests.maxActive>=3);assert.equal(snapshot.tasks.reduce((sum,t)=>sum+t.state.ready,0),24);
+ events.push('resume and scoped retry prepare all 24 episodes; media concurrency remains bounded and exceeds two with configured four');
  const oldDirectory=snapshot.directory;
  await app.evaluate(({dialog},folder)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]})},parent);
  await page.getByRole('button',{name:'更换目录并迁移',exact:true}).click();
@@ -76,16 +86,33 @@ try{
  await page.getByRole('combobox',{name:'播放倍速'}).selectOption('2');await page.getByRole('button',{name:'切换全屏'}).click();
  await page.waitForFunction(()=>!!document.fullscreenElement);await page.evaluate(()=>{window.qaFullscreen=document.fullscreenElement});
  await page.getByRole('button',{name:'下一集',exact:true}).click();await page.waitForFunction(()=>{const v=document.querySelector('video');return document.querySelector('.player')?.getAttribute('aria-label')==='第2集播放器'&&v&&!v.paused&&v.currentTime>.1&&v.playbackRate===2&&document.fullscreenElement===window.qaFullscreen});
- await page.getByRole('button',{name:'切换全屏'}).click();await page.getByRole('button',{name:'暂停',exact:true}).click();
+ await page.getByRole('button',{name:'切换全屏'}).click();await page.getByRole('button',{name:'播放第8集',exact:true}).click();
+ await page.waitForFunction(()=>{const v=document.querySelector('video');return document.querySelector('.player')?.getAttribute('aria-label')==='第8集播放器'&&v&&v.readyState>=2});
+ await page.locator('video').evaluate(v=>{v.currentTime=v.duration-.2;v.play()});
+ await page.waitForFunction(async()=>{const r=await window.desktop.library();return r.data.history.some(p=>p.order===8&&p.time/p.duration>=.95)});
+ events.push('real final-episode playback writes watched status for cleanup without auditing every earlier episode');
  assert.deepEqual((await app.evaluate(()=>global.qa())).requests,requests.requests);
  events.push('migrated cache decodes video and audio offline, next episode keeps fullscreen and 2x with zero new source requests');
  // Exercise actual before-quit/window-beforeunload cleanup rather than Playwright force-close.
  const quit=app.waitForEvent('close');await app.evaluate(({app})=>{setTimeout(()=>app.quit(),0)});await quit;app=null;
  await launch();await app.evaluate(()=>global.offline());await until(s=>s.tasks.length===3&&s.tasks.every(t=>t.state.ready===8));
  assert.equal(snapshot.directory,path.join(parent,'HongguoManjuCache'));assert.deepEqual((await app.evaluate(()=>global.qa())).requests,[]);
- await page.locator('.cache-task').nth(1).getByRole('button',{name:'移除任务',exact:true}).click();await until(s=>s.tasks.length===2);assert.equal(snapshot.usedBytes>0,true);
+ assert.equal(snapshot.concurrency,4);const initialBytes=snapshot.usedBytes;
+ const libraryBefore=await page.evaluate(()=>window.desktop.library());
+ await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:0,checkboxChecked:false})});
+ await page.locator('.cache-task').nth(1).getByRole('button',{name:'删除缓存',exact:true}).click();await page.waitForTimeout(200);assert.equal((await state()).tasks.length,3);assert.equal((await state()).usedBytes,initialBytes);
+ await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1,checkboxChecked:false})});
+ await page.locator('.cache-task').nth(1).getByRole('button',{name:'删除缓存',exact:true}).click();await until(s=>s.tasks.length===2);assert.ok(snapshot.usedBytes<initialBytes);
+ const bytesAfterOne=snapshot.usedBytes;
+ await page.getByRole('button',{name:'清理已看完缓存',exact:true}).click();await until(s=>s.tasks.length===1);assert.ok(snapshot.usedBytes<bytesAfterOne);assert.equal(snapshot.tasks[0].series.title,'长街旧梦');
+ assert.deepEqual(await page.evaluate(()=>window.desktop.library()),libraryBefore);
+ const files=await (await import('node:fs/promises')).readdir(snapshot.directory);assert.equal(files.filter(n=>n.endsWith('.mp4')).length,8);assert.equal(files.filter(n=>n.endsWith('.json')).length,8);
+ events.push('deletion cancel preserves bytes; confirmed deletion frees actual media/index files; one-click watched cleanup preserves unfinished work, favorites and history');
+ const quitAgain=app.waitForEvent('close');await app.evaluate(({app})=>{setTimeout(()=>app.quit(),0)});await quitAgain;app=null;await launch();await until(s=>s.tasks.length===1&&s.tasks[0].state.ready===8);
+ assert.equal(snapshot.usedBytes,bytesAfterOne/2);assert.deepEqual((await app.evaluate(()=>global.qa())).requests,[]);
+ events.push('deleted queue and media stay deleted after restart with no re-download');
  await page.screenshot({path:path.join(output,'cache-center-complete.png')});
- events.push('explicit quit completes cleanup; restart restores path and all tasks without downloads; removing one preserves other tasks and files');
+ events.push('explicit quit completes cleanup; restart restores path and all tasks without downloads; deleted tasks stay removed and other tasks and files persist');
  assert.deepEqual(errors,[]);await writeFile(path.join(output,'report.json'),JSON.stringify({passed:true,events,errors,snapshot,requests},null,2));console.log(JSON.stringify({passed:true,events,output},null,2));
 }catch(error){await writeFile(path.join(output,'report.json'),JSON.stringify({passed:false,events,errors,snapshot,failure:error.message,text:await page?.locator('body').innerText().catch(()=>null)},null,2));throw error}
 finally{if(app){const quit=app.waitForEvent('close');await app.evaluate(({app})=>{setTimeout(()=>app.quit(),0)}).catch(()=>{});await quit}}

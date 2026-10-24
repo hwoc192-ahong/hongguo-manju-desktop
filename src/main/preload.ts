@@ -3,6 +3,7 @@ const api:DesktopApi={
  bufferEpisodes:ids=>ipcRenderer.invoke('buffer-episodes',ids),
  bufferState:()=>ipcRenderer.invoke('buffer-state'),retryBuffer:()=>ipcRenderer.invoke('buffer-retry'),
  cacheState:()=>ipcRenderer.invoke('cache-state'),cacheAdd:id=>ipcRenderer.invoke('cache-add',id),cacheAction:(id,action)=>ipcRenderer.invoke('cache-action',id,action),
+ cacheConcurrency:value=>ipcRenderer.invoke('cache-concurrency',value),cacheDeleteWatched:()=>ipcRenderer.invoke('cache-delete-watched'),recommendations:(id,refresh)=>ipcRenderer.invoke('recommendations',id,refresh),
  cacheChooseDirectory:()=>ipcRenderer.invoke('cache-directory'),cacheOpenDirectory:()=>ipcRenderer.invoke('cache-open-directory'),cacheCloseToTray:enabled=>ipcRenderer.invoke('cache-close-to-tray',enabled),
  onBackground:listener=>{const handler=(_event:Electron.IpcRendererEvent,background:boolean)=>listener(background);ipcRenderer.on('window-background',handler);return()=>{ipcRenderer.removeListener('window-background',handler)}},
  catalog:(board,offset)=>ipcRenderer.invoke('catalog',board,offset),search:(query,offset)=>ipcRenderer.invoke('search',query,offset),importShare:text=>ipcRenderer.invoke('share',text),series:id=>ipcRenderer.invoke('series',id),playback:(id,force)=>ipcRenderer.invoke('playback',id,force),library:()=>ipcRenderer.invoke('library'),favorite:(work,enabled)=>ipcRenderer.invoke('favorite',work,enabled),progress:value=>ipcRenderer.invoke('progress',value),checkUpdate:()=>ipcRenderer.invoke('update'),

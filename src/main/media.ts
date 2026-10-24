@@ -57,6 +57,11 @@ export class MediaCache {
  private pausedMessage='';
  private failed=new Set<string>();
  private closing=false;
+ private processing=0;
+ private processingQueue:{signal:AbortSignal;grant:(release:()=>void)=>void;reject:()=>void}[]=[];
+ private transfers=new Map<number,number>();
+ private deletionMetadata=new Map<string,string>();
+ private transferStarted=0;
  constructor(private directory:string,private ffmpeg:string,private getResource:(id:string)=>Promise<Resource>,private options:{freeBytes?:()=>Promise<number>;concurrency?:number}={}){}
  async init(){await mkdir(this.directory,{recursive:true});for(const name of await readdir(this.directory)){
   if(/^[a-f0-9]{32}\.json$/.test(name)){try{const e=JSON.parse(await readFile(path.join(this.directory,name),'utf8'));if(e.policy===CACHE_POLICY&&validId(e.episodeId)&&Number.isFinite(e.duration)&&e.duration>0&&typeof e.definition==='string'&&e.key===name.slice(0,32)){e.file=path.join(this.directory,e.key+'.mp4');const info=await stat(e.file);if(info.size>0&&info.size<=FILE_LIMIT){e.bytes=info.size;this.entries.set(e.episodeId,e)}}}catch{}}
@@ -107,7 +112,7 @@ export class MediaCache {
   if(this.suspended)return Promise.reject(new AppError('CACHE_MOVING','正在迁移缓存，请稍后再播放'));
   const cached=this.entries.get(id);if(cached&&!force){cached.touched=Date.now();return Promise.resolve(this.result(cached))}
   const existing=this.jobs.get(id);
-  if(existing&&!existing.controller.signal.aborted){existing.foreground=true;return existing.promise}
+  if(existing&&!existing.controller.signal.aborted){existing.foreground=true;if(existing.progress?.stage==='waiting')this.prioritizeProcessing(existing.controller.signal);return existing.promise}
   // A new current episode takes priority; a useful in-flight episode is adopted above.
   if(this.activeJobs.size>=this.concurrency){const background=[...this.activeJobs].find(job=>!job.foreground&&job.id!==id);if(background)this.cancel(background)}
   this.failed.delete(id);
@@ -125,7 +130,58 @@ export class MediaCache {
   job.controller.abort();
   if(!this.activeJobs.has(job)){if(this.jobs.get(job.id)===job)this.jobs.delete(job.id);job.reject(cancelled())}
  }
- private get concurrency(){return Math.max(1,Math.min(2,this.options.concurrency||1))}
+ private get concurrency(){return Math.max(1,Math.min(6,this.options.concurrency||1))}
+ get downloadConcurrency(){return this.concurrency}
+ setConcurrency(value:number){
+  if(![2,4,6].includes(value))throw new AppError('INVALID_INPUT','请选择 2、4 或 6 路并行准备');
+  this.options.concurrency=value;this.pump();
+ }
+ get downloadBytesPerSecond(){
+  const now=Date.now(),bucket=Math.floor(now/1000);let bytes=0;
+  for(const [second,count] of this.transfers){if(second<bucket-4)this.transfers.delete(second);else bytes+=count}
+  return bytes?Math.round(bytes/Math.max(.25,Math.min(5,(now-this.transferStarted)/1000))):0;
+ }
+ private transferred(bytes:number){const now=Date.now();if(!this.transferStarted)this.transferStarted=now;const bucket=Math.floor(now/1000);this.transfers.set(bucket,(this.transfers.get(bucket)||0)+bytes);for(const key of this.transfers.keys())if(key<bucket-4)this.transfers.delete(key)}
+ private processor(signal:AbortSignal):Promise<()=>void>{
+  return new Promise((resolve,reject)=>{
+   const entry={signal,grant:(release:()=>void)=>{signal.removeEventListener('abort',abort);resolve(release)},reject:()=>{signal.removeEventListener('abort',abort);reject(cancelled())}};
+   const abort=()=>{const index=this.processingQueue.indexOf(entry);if(index>=0)this.processingQueue.splice(index,1);entry.reject()};
+   signal.addEventListener('abort',abort,{once:true});this.processingQueue.push(entry);if(signal.aborted)abort();
+   this.prioritizeProcessing(signal);
+   this.pumpProcessors();
+  });
+ }
+ private prioritizeProcessing(signal:AbortSignal){
+  if(!signal.aborted&&this.processing>=2&&[...this.activeJobs].some(job=>job.foreground&&job.controller.signal===signal)){
+   const background=[...this.activeJobs].find(job=>!job.foreground&&!job.controller.signal.aborted&&job.progress?.stage==='processing');if(background)this.cancel(background);
+  }
+ }
+ hasDeletionPending(ids:string[]){return ids.some(id=>this.deletionMetadata.has(id))}
+ private pumpProcessors(){
+  while(this.processing<2&&this.processingQueue.length){
+   const first=this.processingQueue.findIndex(item=>[...this.activeJobs].some(job=>job.foreground&&job.controller.signal===item.signal));
+   const [entry]=this.processingQueue.splice(first<0?0:first,1);if(entry.signal.aborted){entry.reject();continue}
+   this.processing++;let released=false;entry.grant(()=>{if(released)return;released=true;this.processing--;this.pumpProcessors()});
+  }
+ }
+ async deleteEpisodes(ids:string[]):Promise<{freedBytes:number}>{
+  if(!Array.isArray(ids)||ids.length>5000||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw new AppError('INVALID_INPUT','删除缓存的分集列表无效');
+  if(this.suspended||this.closing)throw new AppError('CACHE_BUSY','缓存正在迁移或退出，请稍后再删除');
+  if(ids.some(id=>this.window.includes(id)))throw new AppError('CACHE_IN_USE','作品仍在播放页打开，请先返回缓存中心再删除');
+  this.suspended=true;let freedBytes=0,failed=false;
+  try{
+   const selected=new Set(ids),pending=[...new Set([...this.jobs.values(),...this.activeJobs])].filter(job=>selected.has(job.id));
+   for(const job of pending)this.cancel(job);await Promise.allSettled(pending.map(job=>job.promise));
+   for(const id of ids){
+    const entry=this.entries.get(id),key=entry?.key||this.deletionMetadata.get(id);
+    if(entry){try{await unlink(entry.file)}catch(error:any){if(error.code!=='ENOENT'){failed=true;continue}}this.entries.delete(id);freedBytes+=entry.bytes||0}
+    this.failed.delete(id);this.protectedIds.delete(id);
+    if(key){this.deletionMetadata.set(id,key);try{await unlink(path.join(this.directory,key+'.json'));this.deletionMetadata.delete(id)}catch(error:any){if(error.code!=='ENOENT')failed=true;else this.deletionMetadata.delete(id)}}
+   }
+   if(failed)throw new AppError('CACHE_DELETE','部分缓存文件无法删除，任务已暂停；请关闭占用文件的程序或检查目录权限后重试删除');
+   return {freedBytes};
+  }finally{this.suspended=false;this.pump()}
+ }
  get location(){return this.directory}
  get usedBytes(){return [...this.entries.values()].reduce((sum,entry)=>sum+(entry.bytes||0),0)}
  async freeBytes(){const info=await statfs(this.directory);return info.bavail*info.bsize}
@@ -195,7 +251,7 @@ export class MediaCache {
    const free=async()=>this.options.freeBytes?this.options.freeBytes():statfs(this.directory).then(info=>info.bavail*info.bsize);
    let available=await free();check(signal);
    if(available<SPACE_RESERVE+2*FILE_LIMIT*this.concurrency){await this.trim(true);available=await free();check(signal)}
-   if(!Number.isFinite(available)||available<SPACE_RESERVE+2*FILE_LIMIT*this.concurrency)throw new AppError('DISK_SPACE','缓存空间不足，已暂停准备新剧集；请至少留出 1.6 GiB 可用空间后点击重试缓存');
+   if(!Number.isFinite(available)||available<SPACE_RESERVE+2*FILE_LIMIT*this.concurrency)throw new AppError('DISK_SPACE',`缓存空间不足，已暂停准备新剧集；请至少留出 ${((SPACE_RESERVE+2*FILE_LIMIT*this.concurrency)/1024**3).toFixed(1)} GiB 可用空间后点击重试缓存`);
   }catch(error){check(signal);if(error instanceof AppError)throw error;throw new AppError('DISK_CHECK','无法检查缓存磁盘空间，已暂停准备新剧集；请检查磁盘后重试缓存')}
  }
  private result(e:CacheEntry):Playback{return {url:`manju-media://local/${e.key}`,duration:e.duration,definition:e.definition,episodeId:e.episodeId}}
@@ -210,14 +266,17 @@ export class MediaCache {
    let response:Response;try{response=await fetch(resource.url,{signal:AbortSignal.any([signal,AbortSignal.timeout(45000)])})}catch{check(signal);throw new AppError('NETWORK','视频连接失败，请检查网络后重试')}
    check(signal);
    if(!response.ok||!response.body)throw new AppError('RESOURCE_EXPIRED','视频资源已失效，请重试当前集');
-   const handle=await open(input,'w');let bytes=0;try{for await(const chunk of response.body){check(signal);bytes+=chunk.length;if(bytes>resource.size)throw new AppError('INCOMPLETE_RESOURCE','视频资源大小不一致');await handle.write(chunk);report({stage:'downloading',transferred:bytes,total:resource.size,percent:Math.floor(bytes/resource.size*100)})}}finally{await handle.close()}
+   const handle=await open(input,'w');let bytes=0;try{for await(const chunk of response.body){check(signal);bytes+=chunk.length;if(bytes>resource.size)throw new AppError('INCOMPLETE_RESOURCE','视频资源大小不一致');let offset=0;while(offset<chunk.length){check(signal);const written=await handle.write(chunk,offset,chunk.length-offset);if(!written.bytesWritten)throw new AppError('MEDIA_CACHE','磁盘写入未完成');offset+=written.bytesWritten}this.transferred(chunk.length);report({stage:'downloading',transferred:bytes,total:resource.size,percent:Math.floor(bytes/resource.size*100)})}}finally{await handle.close()}
    check(signal);if(bytes!==resource.size)throw new AppError('INCOMPLETE_RESOURCE','视频读取不完整，请重试当前集');
-   report({stage:'processing',percent:0});
+   report({stage:'waiting'});const release=await this.processor(signal);
+   try{
+   check(signal);report({stage:'processing',percent:0});
    const progress=(percent:number)=>report({stage:'processing',percent});
    if(['h264','avc1'].includes(resource.codec)){
     try{await this.transcode(input,working,contentKey,resource.duration,signal,progress,true);if((await stat(working)).size>FILE_LIMIT)throw new AppError('MEDIA_DECODE','封装文件过大，改用兼容编码')}
     catch(error){check(signal);if(!(error instanceof AppError)||error.code!=='MEDIA_DECODE')throw error;report({stage:'processing',percent:0});await this.transcode(input,working,contentKey,resource.duration,signal,progress)}
    }else await this.transcode(input,working,contentKey,resource.duration,signal,progress);
+   }finally{release()}
    contentKey?.fill(0);check(signal);
    report({stage:'finalizing'});
    const info=await stat(working);if(info.size<=0||info.size>FILE_LIMIT)throw new AppError('MEDIA_CACHE','单集缓存超过大小限制');
