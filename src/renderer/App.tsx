@@ -14,10 +14,13 @@ import {PlayerSurface,useFrameHandoff} from './PlayerSurface';
 import {CacheProgress,cacheProgressText} from './CacheProgress';
 import {CacheCenter} from './CacheCenter';
 import {Recommendations} from './Recommendations';
+import {AppearanceDialog} from './Appearance';
+import {applyUiTheme,readUiTheme,saveUiTheme,themeOption} from './ui-theme';
+import type {UiTheme} from './ui-theme';
 
 let backgrounded=false;
 type View = 'discover' | 'favorites' | 'history' | 'search' | 'cache';
-type IconName = 'home' | 'heart' | 'clock' | 'search' | 'plus' | 'play' | 'pause' | 'back' | 'refresh' | 'close' | 'next' | 'previous' | 'volume' | 'muted' | 'fullscreen' | 'check' | 'arrow' | 'film' | 'link';
+type IconName = 'home' | 'heart' | 'clock' | 'search' | 'plus' | 'play' | 'pause' | 'back' | 'refresh' | 'close' | 'next' | 'previous' | 'volume' | 'muted' | 'fullscreen' | 'check' | 'arrow' | 'film' | 'link' | 'palette' | 'download';
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" /></>,
   heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" />,
@@ -38,6 +41,8 @@ const paths: Record<IconName, ReactNode> = {
   arrow: <path d="m9 5 7 7-7 7" />,
   film: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></>,
   link: <><path d="m10 13 4-4M8 15l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 9l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(0 -1)" /></>,
+  palette: <><path d="M12 3a9 9 0 1 0 0 18h1.4a2 2 0 0 0 1.5-3.3 2 2 0 0 1 1.5-3.3H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3Z" /><circle cx="7.4" cy="11.4" r="1" /><circle cx="9.8" cy="7.5" r="1" /><circle cx="14.4" cy="7.2" r="1" /></>,
+  download: <><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 21h16" /></>,
 };
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
@@ -120,6 +125,8 @@ export default function App() {
   const [importError, setImportError] = useState('');
   const [toast, setToast] = useState('');
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [uiTheme,setUiTheme]=useState<UiTheme>(readUiTheme);
+  const [appearanceOpen,setAppearanceOpen]=useState(false);
   const [cache,setCache]=useState<CacheOverview|null>(null);
   const [cacheError,setCacheError]=useState('');
   const refreshCache=useCallback(async()=>{try{setCache(await call(()=>window.desktop.cacheState()));setCacheError('')}catch(error){setCacheError(errorMessage(error))}},[]);
@@ -128,6 +135,9 @@ export default function App() {
   const requestId = useRef(0);
   const scrollArea = useRef<HTMLDivElement>(null);
   const notify = useCallback((message: string) => setToast(message), []);
+  useEffect(()=>{applyUiTheme(uiTheme)},[uiTheme]);
+  const changeTheme=useCallback((value:UiTheme)=>{applyUiTheme(value);setUiTheme(value);if(!saveUiTheme(value))setToast('外观已切换，但未能保存。')},[]);
+  const closeAppearance=useCallback(()=>setAppearanceOpen(false),[]);
   useEffect(()=>{void call(()=>window.desktop.videoQuality(readPlayerPreferences().quality)).catch(error=>notify(`画质设置同步失败：${errorMessage(error)}`))},[notify]);
   useEffect(() => {
     let allowClose = false;
@@ -211,7 +221,21 @@ export default function App() {
   const spotlight = featuredWorks[heroIndex] || featuredWorks[0];
   const spotlightFavorite = spotlight && library.favorites.some(item => item.id === spotlight.id);
   const list = view === 'favorites' ? library.favorites : view === 'history' ? library.history.map(item => item.work) : catalog?.items || [];
+  const cacheRunning = !!cache?.tasks.some(task => !task.paused && task.state.status !== 'complete');
   return <div className="app-shell">
+    {uiTheme === 'neon' && <aside className="theme-rail" aria-label="主要导航">
+      <button className="rail-logo" onClick={() => navigate('discover')} aria-label="发现" title="返回首页"><span>漫</span></button>
+      <nav className="rail-nav">
+        <button className={view === 'discover' ? 'active' : ''} aria-current={view === 'discover' ? 'page' : undefined} onClick={() => navigate('discover')}><Icon name="home" size={19} /><span>发现</span></button>
+        <button className={view === 'favorites' ? 'active' : ''} aria-current={view === 'favorites' ? 'page' : undefined} onClick={() => navigate('favorites')}><Icon name="heart" size={19} /><span>收藏</span></button>
+        <button className={view === 'history' ? 'active' : ''} aria-current={view === 'history' ? 'page' : undefined} onClick={() => navigate('history')}><Icon name="clock" size={19} /><span>历史</span></button>
+        <button className={view === 'cache' ? 'active' : ''} aria-current={view === 'cache' ? 'page' : undefined} onClick={() => navigate('cache')}><Icon name="download" size={19} /><span>缓存</span>{cacheRunning && <i className="rail-dot" />}</button>
+      </nav>
+      <div className="rail-bottom">
+        <button onClick={() => { setImportError(''); setImportOpen(true); }}><Icon name="link" size={18} /><span>导入</span></button>
+        <button className={appearanceOpen ? 'active' : ''} onClick={() => setAppearanceOpen(true)}><Icon name="palette" size={18} /><span>外观</span></button>
+      </div>
+    </aside>}
     <div className="workspace">
       <header className="topbar">
         <button className="brand" onClick={() => navigate('discover')} aria-label="发现" title="返回首页">漫剧</button>
@@ -220,7 +244,8 @@ export default function App() {
         <button className="top-import" aria-label="导入分享" onClick={() => { setImportError(''); setImportOpen(true); }}><Icon name="link" size={17} /><span>导入链接</span></button>
         <nav className="library-nav" aria-label="个人记录"><button className={view === 'favorites' && !activeId ? 'active' : ''} aria-label="我的收藏" onClick={() => navigate('favorites')}>收藏</button><button className={view === 'history' && !activeId ? 'active' : ''} aria-label="观看历史" onClick={() => navigate('history')}>历史</button></nav>
         <button className="diagnostic-button" onClick={()=>void call(()=>window.desktop.exportDiagnostics()).then(result=>{if(result.saved)notify('诊断信息已导出')}).catch(error=>notify(errorMessage(error)))}>导出诊断</button><UpdateControl/>
-        <button className={`cache-nav ${view==='cache'&&!activeId?'active':''}`} onClick={()=>navigate('cache')} aria-label="缓存中心">缓存{cache?.tasks.some(task=>!task.paused&&task.state.status!=='complete')&&<i/>}</button>
+        <button className={`appearance-button ${uiTheme !== 'paper' ? 'has-theme' : ''}`} onClick={() => setAppearanceOpen(true)} aria-label={`外观设置，当前${themeOption(uiTheme).name}`} title="外观设置"><Icon name="palette" size={17} /><span>外观</span>{uiTheme !== 'paper' && <i />}</button>
+        <button className={`cache-nav ${view==='cache'&&!activeId?'active':''}`} onClick={()=>navigate('cache')} aria-label="缓存中心">缓存{cacheRunning&&<i/>}</button>
       </header>
       <main className="content-scroll" ref={scrollArea}>
         {activeId ? <Detail session={session} startFirst={startFirst===activeId} onOpen={(id,first=false)=>{setStartFirst(first?id:null);setActiveId(id)}} rate={rate} onRateChange={changeRate} id={activeId} library={library} onLibrary={updateLibrary} onFavorite={toggleFavorite} favoriteBusy={favoriteBusy} onBack={() => setActiveId(null)} notify={notify} /> : view==='cache'?<CacheCenter state={cache} error={cacheError} onRefresh={()=>void refreshCache()} onOpen={setActiveId} favorites={library.favorites}/>:<div className={`catalog-page ${view === 'discover' ? 'discover-page' : ''}`}>
@@ -243,6 +268,7 @@ export default function App() {
       </main>
     </div>
     {importOpen && <div className="modal-backdrop" onClick={event => { if (event.target === event.currentTarget && !importing) setImportOpen(false); }}><section className="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-title"><button className="modal-close icon-button" aria-label="关闭导入" disabled={importing} onClick={() => setImportOpen(false)}><Icon name="close" /></button><div className="modal-icon"><Icon name="plus" size={27} /></div><h2 id="import-title">把好故事带回来</h2><p>粘贴红果漫剧的分享文本或链接，导入后会自动加入收藏。</p><form onSubmit={importWork}><textarea autoFocus placeholder="在这里粘贴分享内容或链接…" value={shareText} onChange={event => setShareText(event.target.value)} maxLength={10000} disabled={importing} aria-label="分享文本或链接" />{importError && <p className="inline-error" role="alert">{importError}</p>}<button className="primary-button full-width" type="submit" disabled={!shareText.trim() || importing}>{importing ? <><span className="spinner small" />正在找到这部漫剧…</> : <><Icon name="plus" size={18} />导入并收藏</>}</button></form></section></div>}
+    {appearanceOpen && <AppearanceDialog theme={uiTheme} onChange={changeTheme} onClose={closeAppearance} />}
     {toast && <div className="toast" role="status"><Icon name="check" size={18} /><span>{toast}</span><button aria-label="关闭提示" onClick={() => setToast('')}><Icon name="close" size={15} /></button></div>}
   </div>;
 }
