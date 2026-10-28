@@ -1,4 +1,5 @@
 import {safeJson} from './json';
+import {webPlayback} from './web-playback';
 import { randomUUID } from 'node:crypto';
 import type { ApiTransport, Board, Catalog, Episode, Resource, Series, Work,VideoQuality } from '../shared/types.ts';
 
@@ -278,8 +279,16 @@ export class ContentProvider {
   async getResource(episodeId: string,quality:VideoQuality='auto'): Promise<Resource> {
     identifier(episodeId, 'EPISODE');
     if(quality!=='auto'&&!QUALITY_ORDER.includes(quality))fail('INVALID_QUALITY','画质选项无效。');
-    const data = await this.api('/novel/player/video_model/v1/', { video_id: episodeId, content_type: 1,
-      biz_param: { need_all_video_definition: true, video_platform: 3 } });
+    let data: RecordData;
+    try {
+      data = await this.api('/novel/player/video_model/v1/', { video_id: episodeId, content_type: 1,
+        biz_param: { need_all_video_definition: true, video_platform: 3 } });
+    } catch (error) {
+      // The native gateway now returns HTTP 200 with an empty body. Use the
+      // site's own public compatibility player; preserve unrelated failures.
+      if (error instanceof Error && 'code' in error && error.code === 'API_EMPTY') return webPlayback(episodeId, this.fetcher);
+      throw error;
+    }
     let model = data.video_model;
     if (typeof model === 'string') {
       try { model = safeJson(model); }

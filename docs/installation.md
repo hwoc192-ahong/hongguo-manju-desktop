@@ -4,11 +4,13 @@
 
 ## 先确认下载状态
 
-0.6.0 Windows x64 测试版已提供安装包、源码归档和 SHA-256 校验文件。
+0.6.1 Windows x64 测试版已提供安装包、源码归档和 SHA-256 校验文件。
 
-**[直接下载 Windows x64 安装包](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.6.0/Hongguo-Manju-0.6.0-Windows-x64.exe)** · [发布页面与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.0)
+**[直接下载 Windows x64 安装包](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.6.1/Hongguo-Manju-0.6.1-Windows-x64.exe)** · [发布页面与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.1)
 
-普通用户选择 `.exe`，下载后双击安装即可。Source code ZIP 或 Code → Download ZIP 得到的是开发源码，不能双击安装。此版本为测试版，仍有 [已知限制](releases/v0.6.0.md)。
+普通用户选择 `.exe`，下载后双击安装即可。Source code ZIP 或 Code → Download ZIP 得到的是开发源码，不能双击安装。此版本为测试版，仍有 [已知限制](releases/v0.6.1.md)。
+
+0.6.1 会在原生播放接口返回空响应时，使用官网公开兼容播放资源。兼容源当前抽查为 360p，画质菜单显示实际值。**全集尚未恢复**：部分分集官网返回 403，应用会明确提示，可稍后重试或使用官方 APP 查看。已有高画质缓存仍可继续使用。
 
 ## 系统要求
 
@@ -27,15 +29,15 @@
 
 1. 打开 [本仓库](https://github.com/lhljpt-web/hongguo-manju-desktop)，核对地址中的账号为 `lhljpt-web`，仓库名为 `hongguo-manju-desktop`。
 2. 电脑宽屏页面通常在右侧显示 Releases；窗口较窄时位置可能变化，也可直接进入 [发布列表](https://github.com/lhljpt-web/hongguo-manju-desktop/releases)。
-3. 打开 0.6.0 测试版，展开 Assets，选择 `Hongguo-Manju-0.6.0-Windows-x64.exe` 安装附件。
-4. `.exe` 是 Windows 安装程序；`latest.yml` 是软件自动更新所需的元数据，普通用户不用打开；`SHA256SUMS-0.6.0.txt` 用于手动校验文件。Source code (zip) 和 Source code (tar.gz) 是 GitHub 自动提供的源码归档。
+3. 打开 0.6.1 测试版，展开 Assets，选择 `Hongguo-Manju-0.6.1-Windows-x64.exe` 安装附件。
+4. `.exe` 是 Windows 安装程序；`latest.yml` 是软件自动更新所需的元数据，普通用户不用打开；`SHA256SUMS-0.6.1.txt` 用于手动校验文件。Source code (zip) 和 Source code (tar.gz) 是 GitHub 自动提供的源码归档。
 
-此版本标记为 Pre-release（测试版）。如果没有显示在 Latest 入口，请直接进入 [0.6.0 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.0)。
+此版本标记为 Pre-release（测试版）。如果没有显示在 Latest 入口，请直接进入 [0.6.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.1)。
 
 ## 安装程序
 
-1. 保存 `Hongguo-Manju-0.6.0-Windows-x64.exe`。文件约 174 MiB，下载或复制时需等待文件完整写入。
-2. 如果同时取得 `SHA256SUMS-0.6.0.txt`，可以按下一节核对文件摘要。
+1. 保存 `Hongguo-Manju-0.6.1-Windows-x64.exe`。文件约 174 MiB，下载或复制时需等待文件完整写入。
+2. 如果同时取得 `SHA256SUMS-0.6.1.txt`，可以按下一节核对文件摘要。
 3. 双击 `.exe`，按安装向导选择安装目录，再执行安装。
 4. 完成后从桌面快捷方式或开始菜单启动「红果漫剧桌面版」。
 5. 进入首页后等待榜单载入，点击作品，再进入播放或选择指定集数。
@@ -47,10 +49,10 @@
 在安装文件所在文件夹打开 PowerShell，执行：
 
 ```powershell
-Get-FileHash -LiteralPath '.\Hongguo-Manju-0.6.0-Windows-x64.exe' -Algorithm SHA256
+Get-FileHash -LiteralPath '.\Hongguo-Manju-0.6.1-Windows-x64.exe' -Algorithm SHA256
 ```
 
-安装包摘要见对应发布页面的 `SHA256SUMS-0.6.0.txt`，对照同版本文件逐字符核对结果；十六进制字母大小写不影响比较。同版本如果重新构建，应以对应附件同时提供的校验文件为准。
+安装包摘要见对应发布页面的 `SHA256SUMS-0.6.1.txt`，对照同版本文件逐字符核对结果；十六进制字母大小写不影响比较。同版本如果重新构建，应以对应附件同时提供的校验文件为准。
 
 ## 首次打开后怎么用
 
@@ -122,11 +124,11 @@ Get-FileHash -LiteralPath '.\Hongguo-Manju-0.6.0-Windows-x64.exe' -Algorithm SHA
 
 ## 升级、卸载与记录
 
-0.5.2 起，更新前会等待后台组件实际退出，安装包也会检查并结束本安装目录内的遗留媒体/签名组件，保留完整缓存和有效续传断点。若旧版出现 `Failed to uninstall old application files ... : 2`，从系统托盘菜单选择「退出软件」，下载本页 0.6.0 安装包后覆盖原目录即可；无需删除缓存或先卸载。仍提示运行时，可重启电脑后再直接覆盖安装。错误码本身不能确定具体占用文件，详细验证见[更新与缓存保留验收](update-cache-shutdown-validation.md)。
+0.5.2 起，更新前会等待后台组件实际退出，安装包也会检查并结束本安装目录内的遗留媒体/签名组件，保留完整缓存和有效续传断点。若旧版出现 `Failed to uninstall old application files ... : 2`，从系统托盘菜单选择「退出软件」，下载本页 0.6.1 安装包后覆盖原目录即可；无需删除缓存或先卸载。仍提示运行时，可重启电脑后再直接覆盖安装。错误码本身不能确定具体占用文件，详细验证见[更新与缓存保留验收](update-cache-shutdown-validation.md)。
 
 0.2.4 起采用手动确认下载：启动约 2 秒后检查，发现新版弹出居中提示；同一版本在本次运行中只自动提醒一次，重开软件会再次检查并提醒。点击「立即更新」才下载，选择「暂不更新」不会下载。点击顶部「更新」查看进度，下载并校验完成后点「重启安装」，应用先保存观看记录，再升级并重新打开。收起面板可以继续观看；普通退出不安装更新。更新失败可在面板中重试，GitHub 无法连接时也可手动下载本仓库新安装包覆盖安装。
 
-**0.2.2 及更早版本没有更新器，需先手动下载安装一次 0.6.0。** 0.2.3 仍采用旧的自动下载行为；如需避免它后台下载，请关闭旧版后手动覆盖安装本版。 此后无需每次访问网页下载；更新包含本仓库测试版。升级时保留相同的应用数据目录和安装路径，收藏、播放进度及播放标识会沿用。详见 [应用内更新说明](auto-update.md)。
+**0.2.2 及更早版本没有更新器，需先手动下载安装一次 0.6.1。** 0.2.3 仍采用旧的自动下载行为；如需避免它后台下载，请关闭旧版后手动覆盖安装本版。 此后无需每次访问网页下载；更新包含本仓库测试版。升级时保留相同的应用数据目录和安装路径，收藏、播放进度及播放标识会沿用。详见 [应用内更新说明](auto-update.md)。
 
 卸载可在 Windows「设置 → 应用 → 已安装的应用」（不同系统名称可能略有差异）中找到「红果漫剧桌面版」并选择卸载。默认保留个人记录。
 
@@ -199,9 +201,9 @@ npm run package:win
 
 | 现象 | 说明与处理 |
 | --- | --- |
-| 右侧没有找到安装包 | 直接进入 [0.6.0 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.0)，展开 Assets 并选择 `.exe`；不要下载 Source code ZIP 作为安装包。 |
+| 右侧没有找到安装包 | 直接进入 [0.6.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.1)，展开 Assets 并选择 `.exe`；不要下载 Source code ZIP 作为安装包。 |
 | 下载了 ZIP，找不到可执行程序 | 这是源码归档。开发者可按上面的源码运行步骤操作，仍需准备完整运行组件。 |
-| 更新提示旧版卸载失败，末尾为 `: 2` | 这是旧卸载器的失败码。先从托盘退出，再用 0.6.0 或更新的安装包覆盖原目录；无需清空媒体缓存。仍失败可重启后重试，并提供安装提示及 Windows 版本。 |
+| 更新提示旧版卸载失败，末尾为 `: 2` | 这是旧卸载器的失败码。先从托盘退出，再用 0.6.1 或更新的安装包覆盖原目录；无需清空媒体缓存。仍失败可重启后重试，并提供安装提示及 Windows 版本。 |
 | 启动提示应用数据或运行组件无法读取 | 检查安装是否完整、应用数据目录是否可写；源码运行时还需检查 `runtime-bundle` 是否齐全。 |
 | 首页为空、搜索失败 | 检查网络并重试。同一网络能打开网页，不代表所有内容接口都可用；也可能是上游接口变化。 |
 | 分享链接导入失败 | 重新复制作品的原始分享内容，检查链接是否完整；仍失败时记录提示原文和作品标题。 |
