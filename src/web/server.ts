@@ -90,7 +90,13 @@ async function main(){
         // MediaCache 校验 manju-media://local/<key> 的主机名必须是 local。
         const response=await media.response(`manju-media://local/${url.pathname.slice('/media/local/'.length)}`,req.headers.range||null);
         res.statusCode=response.status;response.headers.forEach((value,name)=>res.setHeader(name,value));
-        if(response.body)Readable.fromWeb(response.body as import('node:stream/web').ReadableStream).pipe(res);else res.end();
+        if(response.body){
+          const stream=Readable.fromWeb(response.body as import('node:stream/web').ReadableStream);
+          // 渐进转码中断会让上游流发出 error；未监听会以未处理异常拖垮整个进程。
+          stream.on('error',()=>{res.destroy()});
+          res.on('close',()=>stream.destroy());
+          stream.pipe(res);
+        }else res.end();
         return;
       }
       if(req.method==='POST'&&url.pathname.startsWith('/api/')){
@@ -129,4 +135,7 @@ async function main(){
   }
   process.on('SIGINT',()=>void shutdown());process.on('SIGTERM',()=>void shutdown());
 }
+// 流断开类异常不应让进程直接崩溃丢失数据；记录后继续服务。
+process.on('uncaughtException',error=>console.error('UNCAUGHT_EXCEPTION',error));
+process.on('unhandledRejection',reason=>console.error('UNHANDLED_REJECTION',reason));
 void main();
