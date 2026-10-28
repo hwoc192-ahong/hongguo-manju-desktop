@@ -37,7 +37,7 @@ export class Signer {
 }
 export class Transport implements ApiTransport {
  private playerIdentity?:Promise<{device_id:string;iid:string}>;
- private registeredPlayer=false;private registration?:Promise<void>;
+ private registeredPlayer=false;private registration?:Promise<void>;private registrationFailedAt=0;
  constructor(private signer:Signer,private profileDirectory=path.join(tmpdir(),'hongguo-runtime')){}
  private identity(){
   return this.playerIdentity??=(async()=>{
@@ -60,6 +60,8 @@ export class Transport implements ApiTransport {
     })();
     }
     private register(){
+     // 登记失败后在窗口期内不再重复请求登记接口；窗口过后允许重试以从网络瞬态中恢复。
+     if(!this.registration&&Date.now()-this.registrationFailedAt<10*60_000)return Promise.reject(new AppError('PLAYER_REGISTRATION','播放设备登记失败，请稍后重试'));
      return this.registration??=(async()=>{
       try{
        const identity=await registerPlayer();
@@ -67,8 +69,7 @@ export class Transport implements ApiTransport {
        try{await writeFile(temporary,JSON.stringify({...identity,registered:true}),{mode:0o600});await rename(temporary,file)}finally{await unlink(temporary).catch(()=>{})}
        this.playerIdentity=Promise.resolve(identity);this.registeredPlayer=true;
       }catch(error){
-       // 登记失败（如网络瞬态）不缓存 rejected Promise，下次播放仍可重试登记。
-       this.registration=undefined;throw error;
+       this.registration=undefined;this.registrationFailedAt=Date.now();throw error;
       }
      })();
     }
