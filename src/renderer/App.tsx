@@ -2,6 +2,7 @@ import './playback-enhancements.css';
 import {nextSeason,episodeFinished,sleepExpired} from './season-continuation';
 import type {SleepPlan} from './season-continuation';
 import {playbackDuration,completedResumeResource} from './progressive-resume';
+import {seekPosition,visiblePlaybackTime} from './seek-progress';
 import type {PlayerPreferences} from './player-preferences';
 import type {Recommendations as RecommendationData,VideoQuality} from '../shared/types';
 import {readPlaybackRate,savePlaybackRate,PLAYBACK_RATES,readPlayerPreferences,savePlayerPreferences,qualityChoices} from './player-preferences';
@@ -389,6 +390,8 @@ function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, e
   const [elapsed, setElapsed] = useState(0);
   const desiredTime = useRef(initialTime);
   const pendingResume=useRef<number|null>(null);
+  const explicitSeek=useRef(false);
+  const playAfterSeek=useRef<boolean|null>(null);
   const streamComplete=useRef(false);
   const progress = useRef({ time: 0, duration: episode.duration || 0, ready: false });
   const persisted = useRef<string>('');
@@ -398,7 +401,7 @@ function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, e
   const save = useCallback(async () => {
     const element = video.current;
     if (element && progress.current.ready) {
-      progress.current.time = element.currentTime;
+      progress.current.time = visiblePlaybackTime(element.currentTime,pendingResume.current);
       progress.current.duration=playbackDuration(resourceRef.current,element.duration,progress.current.duration,streamComplete.current);
     }
     const state = { ...progress.current };
@@ -451,26 +454,39 @@ function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, e
   function captureProgress() {
     const element = video.current; if (!element || !progress.current.ready) return;
     const total=playbackDuration(resource,element.duration,progress.current.duration,streamComplete.current);
-    progress.current = { ready: true, time: element.currentTime, duration: total };
-    setTime(element.currentTime); setDuration(total);
+    const current=visiblePlaybackTime(element.currentTime,pendingResume.current);
+    progress.current = { ready: true, time: current, duration: total };
+    setTime(current); setDuration(total);
   }
   function retry() { captureProgress(); void save(); desiredTime.current = progress.current.ready ? progress.current.time : desiredTime.current; setAttempt(value => value + 1); }
   function startFromBeginning(){
     const element=video.current;if(!element)return;
-    session.onManualPlay();onManualStart();desiredTime.current=0;pendingResume.current=null;
+    session.onManualPlay();onManualStart();desiredTime.current=0;pendingResume.current=null;playAfterSeek.current=true;
     progress.current={ready:true,time:0,duration:playbackDuration(resource,element.duration,episode.duration||0,streamComplete.current)};
     element.currentTime=0;setTime(0);setWaiting(false);void element.play().catch(()=>notify('请点击播放继续'));
   }
   async function togglePlay() {
     const element = video.current; if (!element || loading || error) return;
-    if (element.paused) { session.onManualPlay();onManualStart();if(pendingResume.current!==null){notify('正在缓存上次观看位置，请稍候。');return} try { await element.play(); } catch { notify('点击播放，继续观看。'); } } else element.pause();
+    if(pendingResume.current!==null){
+      const next=playAfterSeek.current===false;playAfterSeek.current=next;setPlaying(next);
+      if(next){session.onManualPlay();onManualStart()}else element.pause();
+      return;
+    }
+    if (element.paused) { playAfterSeek.current=true;session.onManualPlay();onManualStart();try { await element.play(); } catch { notify('点击播放，继续观看。'); } } else {playAfterSeek.current=false;element.pause()}
   }
   function isBuffered(element:HTMLVideoElement,value:number){for(let index=0;index<element.buffered.length;index++)if(value>=element.buffered.start(index)&&value<=element.buffered.end(index))return true;return false}
-  function restoreBuffered(){const element=video.current,target=pendingResume.current;if(!element)return;let through=0;for(let index=0;index<element.buffered.length;index++){if(element.buffered.start(index)>through+.2)break;through=element.buffered.end(index)}if(resource&&through>=resource.duration-.2&&resource.duration>0)streamComplete.current=true;if(target===null||!isBuffered(element,target))return;pendingResume.current=null;element.currentTime=target;progress.current.time=target;progress.current.ready=true;setTime(target);setWaiting(false);if(sessionRef.current.canContinue()&&!endOverlay)void element.play().catch(()=>setPlaying(false))}
+  function restoreBuffered(){const element=video.current,target=pendingResume.current;if(!element)return;let through=0;for(let index=0;index<element.buffered.length;index++){if(element.buffered.start(index)>through+.2)break;through=element.buffered.end(index)}if(resource&&through>=resource.duration-.2&&resource.duration>0)streamComplete.current=true;if(target===null||!isBuffered(element,target))return;pendingResume.current=null;element.currentTime=target;progress.current.time=target;progress.current.ready=true;setTime(target);setWaiting(false);if(playAfterSeek.current!==false&&sessionRef.current.canContinue()&&!endOverlay)void element.play().catch(()=>setPlaying(false))}
   function seek(value:number){
-    const element=video.current;if(!element||!progress.current.ready)return;
-    if(resource?.progressive&&!streamComplete.current&&!isBuffered(element,value)){notify('这一位置尚未缓存，请稍候再拖动。');return}
-    element.currentTime=value;captureProgress();
+    const target=seekPosition(value,duration);if(target===undefined)return;
+    const element=video.current;
+    const continuePlaying=pendingResume.current!==null?playAfterSeek.current!==false:element?!element.paused:true;
+    explicitSeek.current=true;desiredTime.current=target;playAfterSeek.current=continuePlaying;
+    progress.current={ready:true,time:target,duration};setTime(target);
+    if(!element||!resource||(resource.progressive&&!streamComplete.current&&!isBuffered(element,target))){
+      pendingResume.current=target;setWaiting(true);setPlaying(continuePlaying);element?.pause();return;
+    }
+    pendingResume.current=null;element.currentTime=target;setWaiting(false);
+    if(continuePlaying&&sessionRef.current.canContinue()&&!endOverlay)void element.play().catch(()=>setPlaying(false));
   }
   function move(action?: () => void) { captureProgress(); void save();if(action)session.onManualPlay();action?.(); }
   function toggleFullscreen() {
@@ -491,17 +507,17 @@ function Player({ session,endOverlay,onManualStart,rate, onRateChange, series, e
       {resource && !error && <video ref={videoRef} src={resource.url} playsInline preload="auto" onClick={() => void togglePlay()} onDoubleClick={toggleFullscreen}
         onLoadedMetadata={() => {
           const element = video.current!; const total=playbackDuration(resource,element.duration,resource.duration,streamComplete.current);
-          const restored = resumeTime(desiredTime.current, total);const defer=!!resource.progressive&&restored>0&&!isBuffered(element,restored);pendingResume.current=defer?restored:null;if(!defer)element.currentTime = restored; element.volume = volume; element.muted = muted; element.playbackRate = rate;
-          progress.current = { ready: !defer, time: restored, duration: total }; setDuration(total); setTime(restored); setWaiting(defer);
-          if(!defer&&!endOverlay&&sessionRef.current.canContinue())void element.play().catch(() => setPlaying(false));
+          const restored = explicitSeek.current?(seekPosition(desiredTime.current,total)??0):resumeTime(desiredTime.current, total);const defer=!!resource.progressive&&restored>0&&!isBuffered(element,restored);pendingResume.current=defer?restored:null;if(!defer)element.currentTime = restored; element.volume = volume; element.muted = muted; element.playbackRate = rate;
+          progress.current = { ready: true, time: restored, duration: total }; setDuration(total); setTime(restored); setWaiting(defer);if(defer)setPlaying(playAfterSeek.current!==false);
+          if(!defer&&playAfterSeek.current!==false&&!endOverlay&&sessionRef.current.canContinue())void element.play().catch(() => setPlaying(false));
         }}
-        onProgress={restoreBuffered} onTimeUpdate={captureProgress} onPlay={() => {if(!sessionRef.current.canContinue()){video.current?.pause();return}setPlaying(true)}} onPause={() => { setPlaying(false); captureProgress(); void save(); }} onWaiting={() => setWaiting(true)} onCanPlay={() => {restoreBuffered();if(pendingResume.current===null)setWaiting(false)}} onPlaying={() => setWaiting(false)}
+        onProgress={restoreBuffered} onTimeUpdate={captureProgress} onPlay={() => {if(!sessionRef.current.canContinue()){video.current?.pause();return}setPlaying(true)}} onPause={() => { setPlaying(pendingResume.current!==null&&playAfterSeek.current!==false); captureProgress(); void save(); }} onWaiting={() => setWaiting(true)} onCanPlay={() => {restoreBuffered();if(pendingResume.current===null)setWaiting(false)}} onPlaying={() => {if(pendingResume.current!==null)video.current?.pause();else setWaiting(false)}}
         onError={() => { captureProgress(); void save(); if (!automaticRetry.current) { automaticRetry.current = true; retry(); return; } setError('这一集暂时无法播放，请重新获取资源后再试。'); setPlaying(false); }}
-        onEnded={() => { captureProgress(); void save(); setPlaying(false); onEnded(); }} />}
-      {loading ? <div className="player-overlay"><span className="spinner" /><strong>{elapsed >= 5 ? '正在准备播放资源…' : '正在获取这一集…'}</strong><p>{elapsed >= 5 ? '正在解析并缓冲视频，准备好后开始播放。' : `第${episode.order}集即将开始`}</p></div> : error ? <div className="player-overlay player-error" role="alert"><div className="state-icon"><Icon name="film" size={30} /></div><strong>播放遇到了一点问题</strong><p>{error}</p><button className="primary-button" onClick={retry}><Icon name="refresh" size={17} />重试当前集</button></div> : waiting ? <div className="buffering"><span className="spinner" /><span>{pendingResume.current!==null?'正在缓存上次观看位置…':'正在缓冲…'}</span>{pendingResume.current!==null&&<button className="secondary-button" onClick={startFromBeginning}>从头播放</button>}</div> : !playing && resource && !endOverlay && <button className="big-play" onClick={() => void togglePlay()} aria-label="播放"><Icon name="play" size={33} /></button>}
+        onEnded={() => {if(pendingResume.current!==null)return;captureProgress(); void save(); setPlaying(false); onEnded(); }} />}
+      {loading ? <div className="player-overlay"><span className="spinner" /><strong>{elapsed >= 5 ? '正在准备播放资源…' : '正在获取这一集…'}</strong><p>{elapsed >= 5 ? '正在解析并缓冲视频，准备好后开始播放。' : `第${episode.order}集即将开始`}</p></div> : error ? <div className="player-overlay player-error" role="alert"><div className="state-icon"><Icon name="film" size={30} /></div><strong>播放遇到了一点问题</strong><p>{error}</p><button className="primary-button" onClick={retry}><Icon name="refresh" size={17} />重试当前集</button></div> : waiting ? <div className="buffering"><span className="spinner" /><span>{pendingResume.current!==null?`正在准备 ${formatTime(pendingResume.current)}，就绪后自动跳转…`:'正在缓冲…'}</span>{pendingResume.current!==null&&<button className="secondary-button" onClick={startFromBeginning}>从头播放</button>}</div> : !playing && resource && !endOverlay && <button className="big-play" onClick={() => void togglePlay()} aria-label="播放"><Icon name="play" size={33} /></button>}
       {endOverlay}
     </div>
-    <div className="player-controls"><input className="seek-range" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(time, duration || 1)} style={trackStyle(time, duration)} disabled={!resource || !!error || loading} onChange={event => seek(Number(event.target.value))} onPointerUp={() => void save()} onKeyUp={() => void save()} aria-label="播放进度" aria-valuetext={`${formatTime(time)} / ${formatTime(duration)}`} />
+    <div className="player-controls"><input className="seek-range" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(time, duration || 1)} style={trackStyle(time, duration)} disabled={duration<=0 || !!error} onChange={event => seek(Number(event.target.value))} onPointerUp={() => void save()} onKeyUp={() => void save()} aria-label="播放进度" aria-valuetext={`${formatTime(time)} / ${formatTime(duration)}`} />
       <div className="fullscreen-cache">{buffer?`整剧缓存 ${buffer.ready}/${buffer.total} 集 · ${buffer.total?Math.floor(buffer.ready/buffer.total*100):0}%`:'正在读取缓存状态…'}<span>{cacheProgressText(buffer,series.episodes,bufferError)}</span></div>
       <div className="fullscreen-sleep"><SleepControl session={session}/></div>
       {pipError&&<p className="player-inline-error" role="alert">{pipError}</p>}

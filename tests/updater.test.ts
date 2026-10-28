@@ -15,7 +15,7 @@ test('checks only notify; an explicit download request downloads once and instal
   const engine=new Engine();let requests=0;const states:string[]=[];
   const service=new UpdateService(engine,'0.2.3',true,s=>states.push(s.status),()=>{requests++;});
   assert.equal(engine.autoDownload,false);assert.equal(engine.autoInstallOnAppQuit,false);
-  assert.equal(engine.allowPrerelease,true);assert.equal(engine.allowDowngrade,false);
+  assert.equal(engine.allowPrerelease,false);assert.equal(engine.allowDowngrade,false);
   await Promise.all([service.check(),service.check()]);await tick();
   assert.equal(engine.checks,1);assert.equal(engine.downloads,0);
   assert.equal(service.snapshot().status,'available');

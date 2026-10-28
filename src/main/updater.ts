@@ -15,7 +15,7 @@ export class UpdateService {
  private installPending=false;
  constructor(private engine:UpdateEngine,version:string,private enabled:boolean,private changed:(state:UpdateState)=>void,private shutdown:()=>void){
   this.state={status:enabled?'idle':'unsupported',currentVersion:version,message:enabled?'启动后会自动检查更新。':'开发模式不执行更新，请使用已安装的 Windows 版本。'};
-  engine.autoDownload=false;engine.autoInstallOnAppQuit=false;engine.allowPrerelease=true;engine.allowDowngrade=false;
+  engine.autoDownload=false;engine.autoInstallOnAppQuit=false;engine.allowPrerelease=false;engine.allowDowngrade=false;
   // This project publishes full installers (NSIS differentialPackage=false).
   engine.disableDifferentialDownload=true;
   engine.on('update-available',info=>{this.set({status:'available',nextVersion:info.version,message:`发现新版本 ${info.version}，点击“立即更新”开始下载；暂不更新可继续使用当前版本。`});});
