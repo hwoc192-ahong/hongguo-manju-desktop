@@ -1,5 +1,5 @@
 import {app,BrowserWindow,ipcMain,protocol,dialog,shell,Tray,Menu,nativeImage} from 'electron';import path from 'node:path';import {LibraryStore} from './library';import {MediaCache} from './media';import {CacheManager} from './cache-manager';import {Signer,Transport} from './transport';import {ContentProvider,ProviderError} from './provider';import {AppError} from './errors';import type {Result,Work,Progress,Board} from '../shared/types';
-import {trayIcon} from './tray-icon';
+import {trayIcon} from './tray-icon';import {resolveFfmpeg} from './runtime-paths';
 import {RecommendationService} from './recommendations';
 import {Diagnostics} from './diagnostics';import {writeFile} from 'node:fs/promises';import type {VideoQuality} from '../shared/types';
 import {autoUpdater} from 'electron-updater';import {UpdateService} from './updater';
@@ -15,7 +15,7 @@ if(!app.requestSingleInstanceLock()){app.quit()}else{
   window.loadFile(path.join(__dirname,'../renderer/index.html'));window.on('show',()=>window?.webContents.send('window-background',false));window.on('close',event=>{if(!exiting&&tray&&cache?.closeToTray){event.preventDefault();window?.webContents.send('window-background',true);window?.hide()}});window.on('closed',()=>{window=null});
  }
  app.whenReady().then(async()=>{
-  const runtime=app.isPackaged?path.join(process.resourcesPath,'runtime-bundle'):path.join(app.getAppPath(),'runtime-bundle');signer=new Signer(runtime,path.join(app.getPath('userData'),'runtime-work'));const provider=new ContentProvider(new Transport(signer,app.getPath('userData'))),recommendations=new RecommendationService(provider);library=new LibraryStore(app.getPath('userData'));await library.init();media=new MediaCache(await CacheManager.directory(app.getPath('userData')),path.join(runtime,'ffmpeg.exe'),(id,quality)=>provider.getResource(id,quality),{concurrency:4,diagnostics});await media.init();cache=new CacheManager(app.getPath('userData'),media,()=>library.snapshot().history);await cache.init();
+  const runtime=app.isPackaged?path.join(process.resourcesPath,'runtime-bundle'):path.join(app.getAppPath(),'runtime-bundle');signer=new Signer(runtime,path.join(app.getPath('userData'),'runtime-work'));const provider=new ContentProvider(new Transport(signer,app.getPath('userData'))),recommendations=new RecommendationService(provider);library=new LibraryStore(app.getPath('userData'));await library.init();media=new MediaCache(await CacheManager.directory(app.getPath('userData')),resolveFfmpeg(runtime),(id,quality)=>provider.getResource(id,quality),{concurrency:4,diagnostics});await media.init();cache=new CacheManager(app.getPath('userData'),media,()=>library.snapshot().history);await cache.init();
   protocol.handle('manju-media',request=>media.response(request.url,request.headers.get('range')));
   handle('buffer-episodes',(ids:string[])=>media.setBufferWindow(ids));
   handle('buffer-state',()=>media.bufferState());handle('buffer-retry',()=>media.retryBuffer());

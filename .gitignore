@@ -29,3 +29,4 @@ research/independent/identity/*
 !research/independent/identity/IDENTITY-REPORT.md
 __pycache__/
 *.pyc
+.codebuddy/

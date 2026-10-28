@@ -49,60 +49,11 @@ test('a failed playback request does not rotate the stored identity on retry',as
  const ids:string[]=[];
  t.mock.method(globalThis,'fetch',async(input:any)=>{
   const url=new URL(String(input));ids.push(`${url.searchParams.get('device_id')}:${url.searchParams.get('iid')}`);
-  if(url.hostname==='log.snssdk.com'){ids.pop();return Response.json({device_id:0,install_id:0})}
   return ids.length===1?new Response(''):Response.json({code:0,data:{[VID]:{video_model:{}}}});
  });
  const transport=new Transport(signer,dir);
  await assert.rejects(transport.request(endpoint,body),{code:'API_EMPTY'});
  await transport.request(endpoint,body);assert.equal(ids.length,2);assert.equal(ids[0],ids[1]);
-}));
-
-test('empty legacy playback registers once, retries the same episode and persists the server identity',async t=>fixture(async dir=>{
- const signer=new Signer('unused');t.mock.method(signer,'sign',async()=>({}));
- const registered={device_id:'7123456789012345',iid:'7123456789012346'};
- let registrations=0,legacy=0,plays=0;
- t.mock.method(globalThis,'fetch',async(input:any,init:any)=>{
-  const u=new URL(String(input));
-  if(u.hostname==='log.snssdk.com'){
-   registrations++;assert.equal(u.searchParams.get('aid'),'8662');assert.equal(u.searchParams.get('package'),'com.phoenix.read');
-   assert.equal(init.redirect,'error');assert.ok(Buffer.from(init.body).subarray(0,6).equals(Buffer.from([116,99,5,16,0,0])));
-   return new Response('{"device_id":7123456789012345,"install_id":7123456789012346}');
-  }
-  plays++;assert.deepEqual(JSON.parse(init.body).mixed_video_id_map,{'1':[VID]});
-  if(u.searchParams.get('device_id')!==registered.device_id){legacy++;return new Response('')}
-  assert.equal(u.searchParams.get('iid'),registered.iid);
-  return Response.json({code:0,data:{[VID]:{video_model:{}}}});
- });
- const transport=new Transport(signer,dir);
- await Promise.all([transport.request(endpoint,body),transport.request(endpoint,body)]);
- await new Transport(signer,dir).request(endpoint,body);
- assert.equal(registrations,1);assert.equal(legacy,2);assert.equal(plays,5);
- const stored=JSON.parse(await readFile(path.join(dir,'player-profile.json'),'utf8'));
- assert.equal(stored.device_id,registered.device_id);assert.equal(stored.registered,true);
-}));
-
-test('failed registration preserves the legacy profile and is not repeated each episode',async t=>fixture(async dir=>{
- const file=path.join(dir,'player-profile.json'),original='{"device_id":"1123456789012345678","iid":"1123456789012345679"}';await writeFile(file,original);
- let registrations=0;
- t.mock.method(globalThis,'fetch',async(input:any)=>{
-  if(new URL(String(input)).hostname==='log.snssdk.com'){registrations++;return Response.json({device_id:0,install_id:0})}
-  return new Response('');
- });
- const transport=new Transport(new Signer('unused'),dir);
- for(let i=0;i<2;i++)await assert.rejects(transport.request(endpoint,body),{code:'API_EMPTY'});
- assert.equal(registrations,1);assert.equal(await readFile(file,'utf8'),original);
-}));
-
-test('an empty response after successful registration does not register or recurse again',async t=>fixture(async dir=>{
- let registrations=0,plays=0;
- t.mock.method(globalThis,'fetch',async(input:any)=>{
-  if(new URL(String(input)).hostname==='log.snssdk.com'){registrations++;return Response.json({device_id:'7123456789012345',install_id:'7123456789012346'})}
-  plays++;return new Response('');
- });
- const transport=new Transport(new Signer('unused'),dir);
- await assert.rejects(transport.request(endpoint,body),{code:'API_EMPTY'});
- await assert.rejects(new Transport(new Signer('unused'),dir).request(endpoint,body),{code:'API_EMPTY'});
- assert.equal(registrations,1);assert.equal(plays,3);
 }));
 
 test('a corrupt identity is reported without rotating it or making network requests',async t=>fixture(async dir=>{

@@ -318,7 +318,9 @@ function Detail({ session,startFirst,onOpen, rate, onRateChange, id, library, on
   if(!series||index<0)return;
   let live=true,timer:number|undefined;setBuffer(null);setBufferError('');
   const refresh=async()=>{try{const state=await call(()=>window.desktop.bufferState());if(live){setBuffer(state);setBufferError('')}}catch(error){if(live)setBufferError(errorMessage(error))}};
-  const ordered=[...series.episodes.slice(index),...series.episodes.slice(0,index)].map(item=>item.id);
+  // 滚动窗口缓冲：只预取当前集及之后 3 集，随切集向前滚动；滑出窗口的缓存可被正常淘汰。
+  // 需要整季离线缓存请使用缓存中心的「缓存当前整季」（显式登记，不受此窗口影响）。
+  const ordered=series.episodes.slice(index,index+4).map(item=>item.id);
   void(async()=>{await call(()=>window.desktop.videoQuality(sessionRef.current.preferences.quality));if(!live)return;await call(()=>window.desktop.bufferEpisodes(ordered));if(bufferRetry)await call(()=>window.desktop.retryBuffer());if(!live)return;await refresh();if(live)timer=window.setInterval(()=>void refresh(),1000)})().catch(error=>{if(live)setBufferError(errorMessage(error))});
   return()=>{live=false;window.clearInterval(timer)};
  },[series,index,bufferRetry]);

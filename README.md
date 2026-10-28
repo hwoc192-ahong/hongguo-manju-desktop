@@ -2,9 +2,9 @@
 
 在 Windows 电脑上找漫剧、导入分享链接，并接着上次的进度观看。使用 Electron + React + TypeScript 开发，支持 Windows 10/11 x64。
 
-**[下载 Windows x64 安装包 · 0.6.2 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.6.2/Hongguo-Manju-0.6.2-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.2) · [安装指南](docs/installation.md)
+**[下载 Windows x64 安装包 · 0.6.1 测试版](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.6.1/Hongguo-Manju-0.6.1-Windows-x64.exe)** · [发布说明与校验文件](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.1) · [安装指南](docs/installation.md)
 
-0.6.2 修复原生接口空响应时的设备身份恢复：首次失败后登记本机匿名播放身份，保存后重试所选分集。此前失败的第 78、155 集已取得对应 1080p 原生资源；保留官网公开兼容源。抽查成功不代表所有作品均可用。[修复说明](docs/releases/v0.6.2.md)
+0.6.1 在原生播放接口返回空响应时恢复官网公开可播分集，显示实际可用画质（当前抽查为 360p）。**全集尚未恢复**：部分分集官网返回 403，客户端明确提示，不用首集预览代替所选分集。保留外观、缓存、收藏和进度。[修复说明](docs/releases/v0.6.1.md)
 
 0.6.0 新增四套可切换界面风格：默认「宣纸书卷」，以及「午夜影院」「流光」「像素放映厅」。顶部「外观」中选择后立即生效，保存在本机，随时可恢复默认；播放、缓存和观看记录不受影响。[外观更新说明](docs/releases/v0.6.0.md)
 
@@ -84,13 +84,13 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 | 项目 | 当前状态 |
 | --- | --- |
 | 系统 | Windows 10 / 11 x64；暂无 macOS、Linux 或 Windows ARM64 安装包 |
-| 版本 | 0.6.2，测试版（Pre-release） |
-| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.6.2/Hongguo-Manju-0.6.2-Windows-x64.exe) |
+| 版本 | 0.6.1，测试版（Pre-release） |
+| 安装包 | [Windows x64 · 约 174 MiB](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/download/v0.6.1/Hongguo-Manju-0.6.1-Windows-x64.exe) |
 | 源码 | 可通过本页绿色 Code 按钮 → Download ZIP 下载 |
 | 运行依赖 | 源码包不含完整运行组件，仅下载 ZIP 无法直接观看 |
 | 手机与账号 | 完整个人构建无需手机或模拟器；不接入手机账号与跨设备同步 |
 
-普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.6.2，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
+普通用户下载 `.exe` 安装即可，详细步骤见 [下载与安装指南](docs/installation.md)。也可以从 GitHub 右侧 Releases 进入 0.6.1，在 Assets 中选择 `.exe`。GitHub 自动生成的 Source code ZIP 是源码，不是安装程序。
 
 ## 功能
 
@@ -113,7 +113,7 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 
 ## 安装使用
 
-从 [0.6.2 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.2) 下载 `Hongguo-Manju-0.6.2-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
+从 [0.6.1 发布页面](https://github.com/lhljpt-web/hongguo-manju-desktop/releases/tag/v0.6.1) 下载 `Hongguo-Manju-0.6.1-Windows-x64.exe`。下载源码 ZIP 后不能直接运行应用。
 
 安装包包含精简 Java、签名桥接和 FFmpeg，不需要另行安装 Node、Python、Java、手机 APP 或 Android 模拟器，也不需要手动启动服务。
 
@@ -176,6 +176,8 @@ Releases 提供 Windows x64 测试版安装包，仓库提供源码、测试和�
 ## 开发与重建
 
 开发需要 Windows x64、Node.js 22+。完整个人构建的运行依赖位于安装目录的 `resources/runtime-bundle`；重建时需将已准备好的运行组件放入源码根目录的 `runtime-bundle`。组件清单和准备条件见 [运行组件说明](docs/runtime-components.md)。
+
+**Linux 与网页版**：0.6.1 起源码支持在 Linux 上运行。`npm run runtime:linux` 准备跨平台运行组件（自动下载 unidbg 依赖并编译签名桥），`npm run web` 可在浏览器中使用与桌面版一致的界面（无需 Electron），`npm start` 可在 Linux 桌面运行 Electron 版本。搜索、播放资源与官网兼容回退三条通道无需签名 SDK；榜单、剧集详情与分享导入需要自行提取签名 SDK，步骤与差异见 [网页版运行指南](docs/web.md)。
 
 Git 源码目录包含源码、文档、截图、测试和整理后的验证报告；安装包单独放在 Releases，源码 ZIP 不含完整运行组件或媒体缓存。`npm ci` 后可以执行测试、类型检查和构建；从源码启动播放需要准备上述运行组件。静态 APK 研究脚本还需要另行准备官方 APK 和 Python androguard 环境，原研究数据不随源码上传。
 
