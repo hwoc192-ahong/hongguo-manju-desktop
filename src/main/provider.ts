@@ -150,16 +150,18 @@ export class ContentProvider {
 
   private async page(url: URL, share: boolean, accept='text/html'): Promise<string> {
     const visited = new Set<string>();
+    // 官网自 2026-10-28 起对缺失浏览器 User-Agent 的请求返回 403。
+    const browserHeaders = { Accept: accept, 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' };
     for (let hop = 0; hop < 6; hop++) {
       this.validatePageUrl(url, share);
       if (visited.has(url.href)) fail('REDIRECT_LOOP', '分享链接发生循环跳转。');
       visited.add(url.href);
       let response: Response;
-      try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { Accept: accept } }); }
+      try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { ...browserHeaders } }); }
       catch { fail('NETWORK_ERROR', '网页加载失败，请稍后重试。'); }
       if (response.status === 429 || response.status >= 500) {
         await response.body?.cancel();
-        try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { Accept: accept } }); }
+        try { response = await this.fetcher(url.href, { redirect: 'manual', signal: AbortSignal.timeout(20_000), headers: { ...browserHeaders } }); }
         catch { fail('NETWORK_ERROR', '网页加载失败，请稍后重试。'); }
       }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
