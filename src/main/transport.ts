@@ -1,6 +1,6 @@
-import {mkdirSync,existsSync,readdirSync} from 'node:fs';import {mkdir,readFile,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {safeJson} from './json';
-import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';import {createInterface} from 'node:readline';import {createHash,randomInt} from 'node:crypto';import path from 'node:path';
-import type {ApiTransport} from '../shared/types';import {AppError} from './errors';
+import {mkdirSync,existsSync,readdirSync} from 'node:fs';import {mkdir,readFile,writeFile,rename,unlink} from 'node:fs/promises';import {tmpdir} from 'node:os';import {safeJson} from './json';
+import {spawn, type ChildProcessWithoutNullStreams} from 'node:child_process';import {createInterface} from 'node:readline';import {createHash,randomInt,randomUUID} from 'node:crypto';import path from 'node:path';
+import type {ApiTransport} from '../shared/types';import {AppError} from './errors';import {registerPlayer} from './player-registration';
 type Reply={seq:number;headers?:Record<string,string>;error?:string};
 export class Signer {
  private process:ChildProcessWithoutNullStreams|null=null;private seq=0;private pending=new Map<number,{resolve:(headers:Record<string,string>)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
@@ -37,6 +37,7 @@ export class Signer {
 }
 export class Transport implements ApiTransport {
  private playerIdentity?:Promise<{device_id:string;iid:string}>;
+ private registeredPlayer=false;private registration?:Promise<void>;
  constructor(private signer:Signer,private profileDirectory=path.join(tmpdir(),'hongguo-runtime')){}
  private identity(){
   return this.playerIdentity??=(async()=>{
@@ -52,12 +53,26 @@ export class Transport implements ApiTransport {
      catch(writeError:any){if(writeError.code!=='EEXIST')throw writeError;stored=await readFile(file,'utf8')}
     }
     const value=JSON.parse(stored);
-    if(!value||typeof value.device_id!=='string'||typeof value.iid!=='string'||! /^[1-9]\d{18}$/.test(value.device_id)||! /^[1-9]\d{18}$/.test(value.iid))throw Error('INVALID_PROFILE');
+    if(!value||typeof value.device_id!=='string'||typeof value.iid!=='string'||! /^[1-9]\d{15,19}$/.test(value.device_id)||! /^[1-9]\d{15,19}$/.test(value.iid))throw Error('INVALID_PROFILE');
+    this.registeredPlayer=value.registered===true;
     return {device_id:value.device_id,iid:value.iid};
-   }catch{throw new AppError('PLAYER_PROFILE','播放标识无法读取或保存，请检查应用数据目录是否可写')}
-  })();
- }
- async request(endpoint:string,body?:unknown,extra:Record<string,string|number|boolean>={}){
+    }catch{throw new AppError('PLAYER_PROFILE','播放标识无法读取或保存，请检查应用数据目录是否可写')}
+    })();
+    }
+    private register(){
+     return this.registration??=(async()=>{
+      try{
+       const identity=await registerPlayer();
+       const file=path.join(this.profileDirectory,'player-profile.json'),temporary=file+'.'+randomUUID()+'.tmp';
+       try{await writeFile(temporary,JSON.stringify({...identity,registered:true}),{mode:0o600});await rename(temporary,file)}finally{await unlink(temporary).catch(()=>{})}
+       this.playerIdentity=Promise.resolve(identity);this.registeredPlayer=true;
+      }catch(error){
+       // 登记失败（如网络瞬态）不缓存 rejected Promise，下次播放仍可重试登记。
+       this.registration=undefined;throw error;
+      }
+     })();
+    }
+ async request(endpoint:string,body?:unknown,extra:Record<string,string|number|boolean>={}):Promise<any>{
   if(!/^\/(?:novel\/player\/|reading\/bookapi\/)/.test(endpoint))throw new AppError('INVALID_ENDPOINT','内容接口无效');
   const playback=endpoint==='/novel/player/video_model/v1/';
   let requestBody=body;
@@ -76,7 +91,15 @@ export class Transport implements ApiTransport {
   const signatures=playback?{}:await this.signer.sign(url.href,headers);let response:Response;
   try{response=await fetch(url,{method:payload?'POST':'GET',headers:{...headers,...signatures},body:payload,signal:AbortSignal.timeout(25000)})}catch{throw new AppError('NETWORK','无法连接内容来源，请检查网络后重试')}
   if(!response.ok)throw new AppError('API_HTTP',`内容来源暂不可用（${response.status}）`);
-  const text=await response.text();if(!text.trim())throw new AppError('API_EMPTY','内容来源返回空结果，请稍后重试');if(text.length>8*1024*1024)throw new AppError('API_FORMAT','内容返回过大');
+  const text=await response.text();if(!text.trim()){
+  // 原生播放端点可能对未登记设备返回空响应：换用已登记身份，或先完成设备登记再重试一次。
+  if(playback&&url.searchParams.get('device_id')!==(await this.identity()).device_id)return this.request(endpoint,body,extra);
+  if(playback&&!this.registeredPlayer){
+   try{await this.register()}catch(error){console.error('REGISTER_FAIL',(error as any).code,(error as any).message);throw new AppError('API_EMPTY','内容来源返回空结果，请稍后重试')}
+   return this.request(endpoint,body,extra);
+  }
+  throw new AppError('API_EMPTY','内容来源返回空结果，请稍后重试');
+ }if(text.length>8*1024*1024)throw new AppError('API_FORMAT','内容返回过大');
   let json:any;try{json=safeJson(text)}catch{throw new AppError('API_FORMAT','内容来源的数据格式发生变化')}
   if(json.code!==undefined&&json.code!==0)throw new AppError('API_UNAVAILABLE',`内容来源暂不可用（代码 ${Number(json.code)||'未知'}）`);
   if(playback){const item=json.data?.[(body as {video_id:string}).video_id];if(json.code!==0||!item||typeof item!=='object'||!item.video_model)throw new AppError('API_FORMAT','内容来源未返回当前分集的播放资源');return {...json,data:item}}
