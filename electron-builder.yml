@@ -14,7 +14,7 @@ publish:
   provider: github
   owner: lhljpt-web
   repo: hongguo-manju-desktop
-  releaseType: prerelease
+  releaseType: release
 afterPack: scripts/verify-packaged-runtime.cjs
 win:
   target:
