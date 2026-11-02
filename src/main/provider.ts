@@ -1,6 +1,7 @@
 import {safeJson} from './json';
 import {webPlayback} from './web-playback';
 import { randomUUID } from 'node:crypto';
+import {hongguoReady,hongguoSearch,hongguoSeries,hongguoResource} from './hongguo-source';
 import type { ApiTransport, Board, Catalog, Episode, Resource, Series, Work,VideoQuality } from '../shared/types.ts';
 
 type RecordData = Record<string, any>;
@@ -92,6 +93,15 @@ export class ContentProvider {
   constructor(transport: ApiTransport, options: { fetch?: typeof fetch } = {}) {
     this.transport = transport;
     this.fetcher = options.fetch ?? globalThis.fetch;
+  }
+
+  // openhongguo 免签源优先；任何失败（限流/网络/解析）回退原有签名与官网回退通道。
+  private async prefer<T>(operation: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
+    if (hongguoReady()) {
+      try { return await operation(); }
+      catch (error) { console.error('[hongguo-source] 回退原生通道:', (error as any)?.code ?? 'ERROR', (error as any)?.message ?? error); }
+    }
+    return fallback();
   }
 
   private async api(path: string, body?: unknown, extra?: Record<string, string | number | boolean>): Promise<RecordData> {
@@ -198,6 +208,7 @@ export class ContentProvider {
 
   async search(query: string, offset = 0): Promise<Catalog> {
     if (typeof query !== 'string' || !query.trim() || Array.from(query.trim()).length > 30) fail('INVALID_QUERY', '请输入不超过 30 字的搜索关键词。');
+    return this.prefer(() => hongguoSearch(query.trim(), offset), async () => {
     offsetValue(offset);
     if(offset%10!==0||offset>2147483647)fail('INVALID_OFFSET','搜索分页位置无效。');
     const label = `搜索：${query.trim()}`;
@@ -222,7 +233,7 @@ export class ContentProvider {
     }
     const unique = [...new Map(items.map(item => [item.id, item])).values()];
     return { items: unique, hasMore: model.hasMore, nextOffset: offset+10, label, source: '官方网页搜索接口' };
-  }
+  });}
 
   async resolveShare(input: string): Promise<Series> {
     if (typeof input !== 'string' || input.length > 16_384) fail('INVALID_SHARE', '分享内容无效。');
@@ -255,6 +266,7 @@ export class ContentProvider {
 
   async getSeries(id: string): Promise<Series> {
     identifier(id, 'SERIES');
+    return this.prefer(() => hongguoSeries(id), async () => {
     const data = await this.api('/novel/player/multi_video_detail/v1/', { series_id: id, biz_param: {
       detail_page_version: 0, disable_digg_stat: false, disable_video_relate_book: false, need_all_video_definition: false,
       need_mp4_align: false, screen_width_px: '900', source: 7, use_os_player: false, use_server_dns: false,
@@ -275,12 +287,13 @@ export class ContentProvider {
       fail('INCOMPLETE_SERIES', '接口返回的分集不完整或顺序异常。');
     }
     return { ...base, episodes };
-  }
+  });}
 
   // Internal main-process API. Never forward this object to the renderer or persist it in history.
   async getResource(episodeId: string,quality:VideoQuality='auto'): Promise<Resource> {
     identifier(episodeId, 'EPISODE');
     if(quality!=='auto'&&!QUALITY_ORDER.includes(quality))fail('INVALID_QUALITY','画质选项无效。');
+    return this.prefer(() => hongguoResource(episodeId, quality), async () => {
     let data: RecordData;
     try {
       data = await this.api('/novel/player/video_model/v1/', { video_id: episodeId, content_type: 1,
@@ -327,7 +340,7 @@ export class ContentProvider {
     }
     return { episodeId, duration, definition: track.definition, codec: track.codec_type, encrypted: track.encrypt,availableQualities,
       ...(track.encrypt ? { spade: track.spade_a } : {}), url: url.href, size };
-  }
+  });}
 }
 
 export { ContentProvider as Provider };

@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
+    "openhongguo": "^0.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }

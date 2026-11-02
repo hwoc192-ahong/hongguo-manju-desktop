@@ -59,7 +59,7 @@ do_start_daemon() {
 }
 
 do_stop() {
-  if ! alive; then echo "没有正在运行的后台实例。"; rm -f "$PIDFILE"; exit 0; fi
+  if ! alive; then echo "没有正在运行的后台实例。"; rm -f "$PIDFILE"; return 0; fi
   local pid; pid=$(cat "$PIDFILE")
   echo "正在停止（PID $pid）…"
   kill "$pid"

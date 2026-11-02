@@ -1,5 +1,5 @@
 import {createServer,ServerResponse} from 'node:http';import {createReadStream,existsSync} from 'node:fs';import {mkdir,readFile,stat} from 'node:fs/promises';import {Readable} from 'node:stream';import path from 'node:path';import os from 'node:os';
-import {Signer,Transport} from '../main/transport';import {ContentProvider,ProviderError} from '../main/provider';import {MediaCache} from '../main/media';import {CacheManager} from '../main/cache-manager';import {LibraryStore} from '../main/library';import {RecommendationService} from '../main/recommendations';import {Diagnostics} from '../main/diagnostics';import {AppError} from '../main/errors';import {resolveFfmpeg} from '../main/runtime-paths';
+import {Signer,Transport} from '../main/transport';import {ContentProvider,ProviderError} from '../main/provider';import {MediaCache} from '../main/media';import {CacheManager} from '../main/cache-manager';import {LibraryStore} from '../main/library';import {RecommendationService} from '../main/recommendations';import {Diagnostics} from '../main/diagnostics';import {AppError} from '../main/errors';import {resolveFfmpeg} from '../main/runtime-paths';import {initHongguoSource} from '../main/hongguo-source';
 import type {Board,CacheLimits,CachePriority,Progress,Result,UpdateState,VideoQuality,Work} from '../shared/types';
 
 // 红果漫剧网页版：用 Node HTTP 服务复刻 Electron 主进程的全部内容/缓存能力。
@@ -17,6 +17,7 @@ async function main(){
   const diagnostics=new Diagnostics();
   const sdkReady=['libmetasec_ml.so','libc++_shared.so','ms_16777218.bin'].every(name=>existsSync(path.join(runtime,'sdk',name)));
   const sdkHint='榜单、剧集详情与分享导入需要签名组件：请把 libmetasec_ml.so、libc++_shared.so、ms_16777218.bin 放入 runtime-bundle/sdk/ 目录后重启服务（详见 docs/web.md）。搜索功能不受影响。';
+  initHongguoSource(path.join(userData,'openhongguo-device.json'));
   const signer=new Signer(runtime,path.join(userData,'runtime-work'));
   const provider=new ContentProvider(new Transport(signer,userData));
   const recommendations=new RecommendationService(provider);
