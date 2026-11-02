@@ -64,7 +64,7 @@ export async function webPlayback(episodeId:string,fetcher:typeof fetch=fetch):P
    headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({item_id:episodeId})});
   if(!response.ok){
    await response.body?.cancel().catch(()=>{});
-   if(response.status===403)throw new AppError('WEB_PUBLIC_UNAVAILABLE','官网暂未向当前访客提供此集播放资源，请稍后重试或使用官方 APP 查看。');
+   if(response.status===403)throw new AppError('WEB_PUBLIC_UNAVAILABLE','官网未向访客开放此集的公开播放（靠后的分集通常不在公开范围内），前面的集数可以正常播放；请稍后重试或使用官方 APP 观看此集。');
    throw invalid();
   }
   const info=safeJson((await bounded(response,64*1024)).toString('utf8'));
